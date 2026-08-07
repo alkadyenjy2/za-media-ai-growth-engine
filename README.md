@@ -1,2 +1,20 @@
-# za-media-ai-growth-engine
-ZA Media AI Growth Engine  An AI-powered business operating system for ZA Media that automates lead intake, CRM, AI qualification, sales pipeline, follow-ups, content operations, and business intelligence using n8n, Supabase, OpenAI, and modern cloud infrastructure.
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+</div>
+
+# Run and deploy your AI Studio app
+
+This contains everything you need to run your app locally.
+
+View your app in AI Studio: https://ai.studio/apps/590fe18f-9a95-47af-ab57-be021f7e0716
+
+## Run Locally
+
+**Prerequisites:**  Node.js
+
+
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`
