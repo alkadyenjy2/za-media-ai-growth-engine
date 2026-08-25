@@ -5,7 +5,7 @@ import { X, Sparkles, Send, Building2, User, Mail, Phone, DollarSign, Bot, Check
 interface LeadIntakeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmitLead: (newLead: Lead) => void;
+  onSubmitLead: (newLead: Lead) => Promise<void>;
 }
 
 export const LeadIntakeModal: React.FC<LeadIntakeModalProps> = ({
@@ -29,7 +29,7 @@ export const LeadIntakeModal: React.FC<LeadIntakeModalProps> = ({
   const validateEmail = (val: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
   const validatePhone = (val: string) => !val || /^[+0-9\s\-()]{7,20}$/.test(val);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setValidationError('');
 
@@ -49,69 +49,52 @@ export const LeadIntakeModal: React.FC<LeadIntakeModalProps> = ({
     }
 
     setIsScoring(true);
+    const budgetNum = Math.max(0, Number(monthlyBudget) || 0);
+    const leadId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : '00000000-0000-4000-8000-' + Date.now().toString(16).padStart(12, '0');
 
-    setTimeout(() => {
-      const budgetNum = parseFloat(monthlyBudget) || 5000;
-      const estimatedValue = budgetNum * 3.5;
-      
-      // Calculate realistic score based on budget & details
-      let overallScore = 70;
-      if (budgetNum >= 15000) overallScore = 95;
-      else if (budgetNum >= 10000) overallScore = 88;
-      else if (budgetNum >= 5000) overallScore = 76;
-      else overallScore = 58;
+    const newLead: Lead = {
+      id: leadId,
+      contactName: contactName.trim(),
+      companyName: companyName.trim(),
+      email: email.trim().toLowerCase(),
+      phone: phone.trim(),
+      source,
+      industry: industry.trim(),
+      estimatedValue: 0,
+      monthlyBudget: budgetNum,
+      stage: 'intake',
+      status: 'Warm',
+      score: {
+        overallScore: 0,
+        icpFitScore: 0,
+        budgetMatchScore: 0,
+        buyingIntentScore: 0,
+        decisionMakerVerified: false,
+        keyInsights: [],
+        recommendedAction: 'Awaiting server-side qualification'
+      },
+      createdAt: new Date().toISOString(),
+      lastActivity: 'Awaiting server-side AI qualification',
+      notes: notes.trim(),
+      assignedAgent: 'Pending server qualification'
+    };
 
-      const status: Lead['status'] = overallScore >= 85 ? 'Hot' : overallScore >= 65 ? 'Warm' : 'Cold';
-
-      const finalPhone = phone.trim() || ('+971 50 ' + Math.floor(100000 + Math.random() * 900000));
-
-      const leadId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '00000000-0000-4000-8000-' + Date.now().toString(16).padStart(12, '0');
-
-      const newLead: Lead = {
-        id: leadId,
-        contactName,
-        companyName,
-        email,
-        phone: finalPhone,
-        source,
-        industry,
-        estimatedValue,
-        monthlyBudget: budgetNum,
-        stage: 'intake',
-        status,
-        createdAt: 'Just now',
-        lastActivity: 'AI Lead Qualification Engine evaluated lead intake',
-        notes: notes || 'Simulated inbound lead submission via ZA Media AI Growth Engine',
-        assignedAgent: 'ZA AI Sales Engine Alpha',
-        score: {
-          overallScore,
-          icpFitScore: Math.min(100, overallScore + 3),
-          budgetMatchScore: Math.min(100, Math.round(budgetNum / 150)),
-          buyingIntentScore: Math.min(100, overallScore - 2),
-          decisionMakerVerified: true,
-          keyInsights: [
-            `Verified ${industry} company profile`,
-            `Budget ($${budgetNum.toLocaleString()}/mo) satisfies Growth OS requirements`,
-            'AI Agent detected immediate implementation intent'
-          ],
-          recommendedAction: overallScore >= 85 
-            ? 'Send automated WhatsApp booking link & priority meeting invite' 
-            : 'Route to automated email nurture campaign'
-        }
-      };
-
-      onSubmitLead(newLead);
-      setIsScoring(false);
-      onClose();
-
-      // Reset form
+    try {
+      await onSubmitLead(newLead);
       setContactName('');
       setCompanyName('');
       setEmail('');
       setPhone('');
       setNotes('');
       setValidationError('');
-    }, 1000);
+      onClose();
+    } catch (err: any) {
+      setValidationError(err?.message || 'The lead could not be saved. No success was recorded.');
+    } finally {
+      setIsScoring(false);
+    }
   };
 
   return (
@@ -124,8 +107,8 @@ export const LeadIntakeModal: React.FC<LeadIntakeModalProps> = ({
               <Sparkles className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-bold text-white text-base">Simulate Inbound Lead</h3>
-              <p className="text-xs text-slate-400">Triggers real-time AI qualification engine scoring</p>
+              <h3 className="font-bold text-white text-base">Add Inbound Lead</h3>
+              <p className="text-xs text-slate-400">Persists the lead, then runs server-side qualification</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
@@ -279,7 +262,7 @@ export const LeadIntakeModal: React.FC<LeadIntakeModalProps> = ({
               ) : (
                 <>
                   <Sparkles className="w-4 h-4 text-amber-300" />
-                  <span>Run AI Qualification & Add</span>
+                  <span>Qualify & Save Lead</span>
                 </>
               )}
             </button>

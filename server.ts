@@ -1,31 +1,107 @@
 import express from "express";
 import path from "path";
+import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
+import type { Request, Response, NextFunction } from "express";
 
 dotenv.config();
 
 const app = express();
-app.use(express.json());
-const PORT = 3000;
+app.use(express.json({
+  limit: '256kb',
+  verify: (req, _res, buffer) => {
+    (req as AuthenticatedRequest).rawBody = buffer.toString('utf8');
+  }
+}));
+const PORT = Number(process.env.PORT || 3000);
 
 // Lazy initialization of Supabase Server Client
 function getSupabaseServerClient() {
   const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-  const key = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {
     return null;
   }
   return createClient(url, key);
 }
 
+interface AuthenticatedRequest extends Request {
+  userId?: string;
+  organizationId?: string;
+  rawBody?: string;
+  callbackSignatureVerified?: boolean;
+}
+
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  const authorization = req.header('authorization');
+  const token = authorization?.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
+  if (!token) return res.status(401).json({ success: false, error: 'Authentication required.' });
+
+  const supabaseServer = getSupabaseServerClient();
+  if (!supabaseServer) return res.status(503).json({ success: false, error: 'Authentication service is not configured.' });
+
+  const { data: { user }, error: userError } = await supabaseServer.auth.getUser(token);
+  if (userError || !user) return res.status(401).json({ success: false, error: 'Invalid or expired session.' });
+
+  const { data: membership, error: membershipError } = await supabaseServer
+    .from('organization_memberships')
+    .select('organization_id, role')
+    .eq('user_id', user.id)
+    .limit(1)
+    .maybeSingle();
+
+  if (membershipError || !membership?.organization_id) {
+    return res.status(403).json({ success: false, error: 'User has no organization membership.' });
+  }
+
+  const authenticatedRequest = req as AuthenticatedRequest;
+  authenticatedRequest.userId = user.id;
+  authenticatedRequest.organizationId = membership.organization_id;
+  return next();
+}
+
+function verifyN8nCallbackSignature(req: Request, res: Response, next: NextFunction) {
+  const secret = process.env.N8N_CALLBACK_SIGNING_SECRET;
+  if (!secret) {
+    return res.status(503).json({ success: false, error: 'n8n callback signing is not configured.' });
+  }
+
+  const timestamp = req.header('x-n8n-timestamp') || '';
+  const signatureHeader = req.header('x-n8n-signature') || '';
+  const signature = signatureHeader.replace(/^sha256=/i, '').trim();
+  const timestampMs = Number(timestamp) * 1000;
+  const maxSkewMs = 5 * 60 * 1000;
+  if (!/^\d+$/.test(timestamp) || !Number.isFinite(timestampMs) || Math.abs(Date.now() - timestampMs) > maxSkewMs) {
+    return res.status(401).json({ success: false, error: 'Invalid or expired callback timestamp.' });
+  }
+
+  const rawBody = (req as AuthenticatedRequest).rawBody || JSON.stringify(req.body || {});
+  const expected = crypto.createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex');
+  const providedBuffer = Buffer.from(signature, 'hex');
+  const expectedBuffer = Buffer.from(expected, 'hex');
+  if (providedBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(providedBuffer, expectedBuffer)) {
+    return res.status(401).json({ success: false, error: 'Invalid callback signature.' });
+  }
+
+  (req as AuthenticatedRequest).callbackSignatureVerified = true;
+  return next();
+}
+
+// All API routes are protected by a real Supabase session except liveness and the signed n8n callback.
+app.use('/api', (req, res, next) => {
+  if (req.path === '/health') return next();
+  if (req.path === '/n8n-callback') return verifyN8nCallbackSignature(req, res, next);
+  return requireAuth(req, res, next);
+});
+
 // Lazy initialization of GoogleGenAI
 function getGenAiClient() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    console.warn("GEMINI_API_KEY environment variable is not set. Server AI calls will fall back.");
+    console.warn("GEMINI_API_KEY environment variable is not set. Server AI calls are unavailable.");
     return null;
   }
   return new GoogleGenAI({
@@ -38,7 +114,7 @@ function getGenAiClient() {
   });
 }
 
-import { isAllowedWebhookUrl, resolveSafeWebhookUrl } from "./src/lib/webhookProxy";
+import { isAllowedWebhookUrl, resolveSafeWebhookUrl } from "./src/lib/webhookPolicy";
 
 // API endpoint for n8n Webhook Proxy & Execution
 app.post("/api/n8n-webhook", async (req, res) => {
@@ -93,8 +169,8 @@ app.post("/api/n8n-webhook", async (req, res) => {
             ? (responseData.message || responseData.hint || JSON.stringify(responseData))
             : (typeof responseData === 'string' && responseData.length > 0 ? responseData : 'Workflow is awaiting activation in n8n UI');
 
-          return res.json({
-            success: true,
+          return res.status(502).json({
+            success: false,
             status: 404,
             workflowActive: false,
             reachable: true,
@@ -178,7 +254,9 @@ interface N8nExecutionRecord {
   nodeTrace: { nodeName: string; status: 'completed' | 'failed' | 'running'; durationMs: number }[];
 }
 
-const n8nExecutionHistory: N8nExecutionRecord[] = [
+const n8nExecutionHistory: N8nExecutionRecord[] = []; /* deprecated: live execution data comes from n8n API */
+/*
+
   {
     id: 'exec-9821',
     workflowId: 'wf-lead-intake',
@@ -239,13 +317,13 @@ const n8nExecutionHistory: N8nExecutionRecord[] = [
       { nodeName: 'Generate License Key', status: 'completed', durationMs: 40 },
       { nodeName: 'Supabase Income Record', status: 'completed', durationMs: 125 }
     ]
-  }
+    }
 ];
-
+*/
 // Helper to log an execution
 function recordN8nExecution(rec: Omit<N8nExecutionRecord, 'id' | 'timestamp'>) {
   const newRec: N8nExecutionRecord = {
-    id: 'exec-' + Math.floor(1000 + Math.random() * 9000),
+    id: 'test-exec-' + crypto.randomUUID(),
     timestamp: new Date().toISOString(),
     ...rec
   };
@@ -255,9 +333,10 @@ function recordN8nExecution(rec: Omit<N8nExecutionRecord, 'id' | 'timestamp'>) {
   }
   return newRec;
 }
-
-// Configured workflows list with live stats
-const configuredWorkflowsList = [
+// Configured workflows list is intentionally empty; live metadata comes from n8n API.
+const configuredWorkflowsList: Array<{ id: string; name: string }> = []; /* deprecated */
+/*
+const legacyConfiguredWorkflowsList = [
   {
     id: 'wf-lead-intake',
     name: 'Lead Intake & AI Qualification Engine',
@@ -345,63 +424,61 @@ const configuredWorkflowsList = [
   }
 ];
 
-// GET /api/n8n/workflows - List all workflows with live health stats
-app.get("/api/n8n/workflows", async (req, res) => {
-  try {
-    const totalRuns = configuredWorkflowsList.reduce((sum, w) => sum + w.totalRuns, 0);
-    const totalErrors = configuredWorkflowsList.reduce((sum, w) => sum + w.errorCount, 0);
-    const overallSuccessRate = totalRuns > 0 ? Number(((totalRuns - totalErrors) / totalRuns * 100).toFixed(1)) : 100;
-    const avgLatency = Math.round(configuredWorkflowsList.reduce((sum, w) => sum + w.avgExecutionTimeMs, 0) / configuredWorkflowsList.length);
+*/
+function getN8nApiConfig() {
+  const baseUrl = process.env.N8N_API_BASE_URL?.replace(/\/$/, '');
+  const apiKey = process.env.N8N_API_KEY;
+  return baseUrl && apiKey ? { baseUrl, apiKey } : null;
+}
 
-    res.json({
-      success: true,
-      workflows: configuredWorkflowsList,
-      stats: {
-        totalWorkflows: configuredWorkflowsList.length,
-        activeWorkflows: configuredWorkflowsList.filter(w => w.status === 'active').length,
-        totalExecutions: totalRuns,
-        totalErrors,
-        overallSuccessRate,
-        averageLatencyMs: avgLatency,
-        n8nInstanceHost: 'enjywork.app.n8n.cloud',
-        lastHealthCheck: new Date().toISOString()
-      }
-    });
+function n8nApiHeaders(apiKey: string) {
+  return { Accept: 'application/json', 'X-N8N-API-KEY': apiKey };
+}
+
+// GET /api/n8n/workflows - Read live workflow metadata only when n8n API credentials are configured.
+app.get("/api/n8n/workflows", async (_req, res) => {
+  const config = getN8nApiConfig();
+  if (!config) return res.status(503).json({ success: false, code: 'N8N_API_NOT_CONFIGURED', error: 'n8n API credentials are not configured.' });
+  try {
+    const response = await fetch(`${config.baseUrl}/workflows?limit=100`, { headers: n8nApiHeaders(config.apiKey) });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) return res.status(502).json({ success: false, code: 'N8N_API_ERROR', error: `n8n API returned HTTP ${response.status}.` });
+    const workflows = Array.isArray(body.data) ? body.data : [];
+    return res.json({ success: true, source: 'n8n_api', workflows, stats: { totalWorkflows: workflows.length, lastHealthCheck: new Date().toISOString() } });
   } catch (error: any) {
-    console.error("n8n workflows list error:", error);
-    res.status(500).json({ success: false, error: error.message || "Failed to fetch workflows" });
+    console.error('n8n workflows API error:', error);
+    return res.status(502).json({ success: false, code: 'N8N_API_UNREACHABLE', error: 'Unable to reach the configured n8n API.' });
   }
 });
 
-// GET /api/n8n/executions - Return recent execution logs
+// GET /api/n8n/executions - Read live execution logs only from n8n API.
 app.get("/api/n8n/executions", async (req, res) => {
+  const config = getN8nApiConfig();
+  if (!config) return res.status(503).json({ success: false, code: 'N8N_API_NOT_CONFIGURED', error: 'n8n API credentials are not configured.' });
   try {
-    const limit = Number(req.query.limit) || 20;
-    const statusFilter = req.query.status as string;
-
-    let filtered = [...n8nExecutionHistory];
-    if (statusFilter && statusFilter !== 'all') {
-      filtered = filtered.filter(e => e.status === statusFilter);
-    }
-
-    res.json({
-      success: true,
-      executions: filtered.slice(0, limit),
-      totalCount: n8nExecutionHistory.length,
-      errorCount: n8nExecutionHistory.filter(e => e.status === 'error').length
-    });
+    const requestedLimit = Number(req.query.limit) || 20;
+    const limit = Math.min(Math.max(requestedLimit, 1), 100);
+    const statusFilter = typeof req.query.status === 'string' ? req.query.status : '';
+    const response = await fetch(`${config.baseUrl}/executions?limit=${limit}`, { headers: n8nApiHeaders(config.apiKey) });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) return res.status(502).json({ success: false, code: 'N8N_API_ERROR', error: `n8n API returned HTTP ${response.status}.` });
+    let executions = Array.isArray(body.data) ? body.data : [];
+    if (statusFilter && statusFilter !== 'all') executions = executions.filter((execution: any) => execution.status === statusFilter);
+    return res.json({ success: true, source: 'n8n_api', executions, totalCount: executions.length, errorCount: executions.filter((execution: any) => execution.status === 'error').length });
   } catch (error: any) {
-    console.error("n8n executions list error:", error);
-    res.status(500).json({ success: false, error: error.message || "Failed to fetch execution logs" });
+    console.error('n8n executions API error:', error);
+    return res.status(502).json({ success: false, code: 'N8N_API_UNREACHABLE', error: 'Unable to reach the configured n8n API.' });
   }
 });
 
-// POST /api/n8n/test-trigger - Trigger an interactive test execution for any workflow
+// POST /api/n8n/test-trigger - Trigger only an explicitly configured, safe test webhook.
 app.post("/api/n8n/test-trigger", async (req, res) => {
   try {
-    const { workflowId, payload, targetUrl } = req.body;
-    const finalUrl = targetUrl || process.env.VITE_N8N_WEBHOOK_URL || 'https://enjywork.app.n8n.cloud/webhook/af61c8ab-cc19-4c8d-aa96-3ad5f55f10a6';
-    const targetWf = configuredWorkflowsList.find(w => w.id === workflowId) || configuredWorkflowsList[0];
+    const finalUrl = process.env.N8N_TEST_WEBHOOK_URL;
+    if (!finalUrl) return res.status(503).json({ success: false, code: 'N8N_TEST_WEBHOOK_NOT_CONFIGURED', error: 'A dedicated n8n test webhook is not configured.' });
+    if (!isAllowedWebhookUrl(finalUrl)) return res.status(503).json({ success: false, code: 'N8N_TEST_WEBHOOK_NOT_ALLOWED', error: 'Configured n8n test webhook is not in the server allowlist.' });
+    const { workflowId, payload } = req.body || {};
+    const targetWf = { id: workflowId || 'configured-test-webhook', name: 'Configured n8n test webhook' };
 
     const startTime = Date.now();
     let httpStatus = 200;
@@ -420,12 +497,8 @@ app.post("/api/n8n/test-trigger", async (req, res) => {
       const text = await response.text();
       try { responseData = JSON.parse(text); } catch { responseData = text; }
 
-      // 404 in n8n means workflow is ready/awaiting toggle or test event
       if (response.ok) {
         isSuccess = true;
-      } else if (response.status === 404) {
-        isSuccess = true; // Endpoint reachable, awaiting toggle in n8n UI
-        responseData = { hint: 'Workflow endpoint reached. Awaiting toggle activation in n8n cloud.', raw: responseData };
       } else {
         isSuccess = false;
         errMsg = `HTTP ${response.status}: Server returned error.`;
@@ -446,8 +519,8 @@ app.post("/api/n8n/test-trigger", async (req, res) => {
       httpStatus,
       durationMs: duration,
       triggerSource: 'Manual Test (Automation Monitor)',
-      leadName: payload?.contactName || payload?.name || 'Interactive Test Prospect',
-      leadEmail: payload?.email || 'test@zamedia.ai',
+          leadName: payload?.contactName || payload?.name || 'Synthetic test payload',
+          leadEmail: payload?.email || 'synthetic-test@invalid.local',
       payload: payload || {},
       response: responseData,
       errorMessage: errMsg || undefined,
@@ -460,7 +533,8 @@ app.post("/api/n8n/test-trigger", async (req, res) => {
 
     res.json({
       success: isSuccess,
-      execution: recorded
+      source: 'configured_test_webhook',
+      execution: { ...recorded, persisted: false }
     });
   } catch (error: any) {
     console.error("n8n test trigger error:", error);
@@ -475,24 +549,7 @@ app.post("/api/n8n/autofix-error", async (req, res) => {
     const ai = getGenAiClient();
 
     if (!ai) {
-      return res.json({
-        success: true,
-        remediation: {
-          rootCause: "Standard Webhook Routing issue or inactive workflow status.",
-          fixSteps: [
-            "Open https://enjywork.app.n8n.cloud in your browser.",
-            "Locate the workflow and toggle the Active switch in the top right corner to ON.",
-            "Verify that the incoming field names match the expected node schema (e.g. 'contactName', 'email', 'monthlyBudget').",
-            "Click Save to commit all node changes."
-          ],
-          suggestedNodeJson: {
-            "main": [
-              [{ "node": nodeName || "Webhook", "type": "main", "index": 0 }]
-            ]
-          },
-          confidenceScore: 95
-        }
-      });
+      return res.status(503).json({ success: false, code: 'AI_NOT_CONFIGURED', error: 'GEMINI_API_KEY is required for n8n error analysis.' });
     }
 
     const prompt = `You are an elite n8n Automation & DevOps AI Specialist.
@@ -557,11 +614,13 @@ app.post("/api/n8n-callback", async (req, res) => {
     } = req.body || {};
 
     const targetLeadId = leadId || lead_id || id;
-    const targetEmail = email;
+    const targetEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    const organizationId = req.body?.organizationId || req.body?.organization_id;
     const wfName = workflowName || workflow_name || 'n8n Workflow Execution';
-    const execId = executionId || execution_id || 'N/A';
+    const execId = executionId || execution_id || '';
+    const eventId = req.body?.eventId || req.body?.event_id || execId;
 
-    // Validation: Require lead identifier (leadId/lead_id/id or email)
+    // Validation: require explicit tenant and event identifiers; callbacks must be replay-safe.
     if (!targetLeadId && !targetEmail) {
       return res.status(400).json({
         success: false,
@@ -569,82 +628,122 @@ app.post("/api/n8n-callback", async (req, res) => {
         message: "Validation Error: Callback payload must include a lead identifier ('leadId', 'lead_id', 'id', or 'email')."
       });
     }
+    if (!organizationId || !eventId) {
+      return res.status(400).json({
+        success: false,
+        status: 400,
+        message: 'Validation Error: organization_id and event_id are required.'
+      });
+    }
+
+    // Validate UUID-shaped tenant id before using it in database queries.
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(organizationId))) {
+      return res.status(400).json({ success: false, status: 400, message: 'Invalid organization_id.' });
+    }
 
     console.log(`[n8n Callback Engine] Callback received for lead '${targetLeadId || targetEmail}' from workflow '${wfName}' (Execution: ${execId})`);
 
     const supabase = getSupabaseServerClient();
-    let updatedInSupabase = false;
-    let databaseError = null;
+    if (!supabase) {
+      return res.status(503).json({ success: false, status: 503, message: 'Supabase service-role configuration is required for callbacks.' });
+    }
 
     const activityDesc = notes || summary || lastActivity || `n8n workflow '${wfName}' completed successfully.`;
     const nowIso = new Date().toISOString();
+    const rawBody = (req as AuthenticatedRequest).rawBody || JSON.stringify(req.body || {});
+    const payloadHash = crypto.createHash('sha256').update(rawBody).digest('hex');
 
-    if (supabase) {
-      // Build update payload for leads table
-      const updateData: Record<string, any> = {
-        updated_at: nowIso,
-        last_activity: activityDesc
-      };
-
-      if (status) updateData.status = status;
-      if (stage) updateData.stage = stage;
-      if (notes || summary) updateData.notes = notes || summary;
-
-      // Update lead record in Supabase
-      let query = supabase.from('leads').update(updateData);
-      if (targetLeadId) {
-        query = query.eq('id', targetLeadId);
-      } else if (targetEmail) {
-        query = query.eq('email', targetEmail);
-      }
-
-      const { error: leadUpdateError } = await query;
-
-      if (leadUpdateError) {
-        console.warn(`[n8n Callback Engine] Supabase lead update warning: ${leadUpdateError.message}`);
-        databaseError = leadUpdateError.message;
-      } else {
-        updatedInSupabase = true;
-        console.log(`[n8n Callback Engine] Lead '${targetLeadId || targetEmail}' successfully updated in Supabase.`);
-      }
-
-      // Record entry in audit_logs table
-      const auditPayload = {
-        title: activityTitle || `n8n Workflow Completed: ${wfName}`,
-        description: activityDesc,
-        type: 'automation',
-        lead_name: companyName || contactName || targetLeadId || targetEmail || 'n8n Lead',
-        status: 'success',
-        created_at: nowIso
-      };
-
-      const { error: auditError } = await supabase.from('audit_logs').insert([auditPayload]);
-      if (auditError) {
-        // Fallback to ai_actions table if audit_logs table is uninitialized
-        try {
-          await supabase.from('ai_actions').insert([{
-            agent_name: 'n8n Orchestration Engine',
-            action_type: 'workflow_callback',
-            target_lead_id: targetLeadId || null,
-            payload: { workflowName: wfName, executionId: execId, status, stage, activityDesc },
-            status: 'success',
-            created_at: nowIso
-          }]);
-        } catch {
-          // Ignore fallback log error
-        }
-      }
-    } else {
-      console.warn('[n8n Callback Engine] Supabase client not initialized (missing environment variables). Callback acknowledged.');
+    const { data: existingReceipt, error: receiptLookupError } = await supabase
+      .from('n8n_callback_receipts')
+      .select('event_id, status, organization_id')
+      .eq('event_id', String(eventId))
+      .maybeSingle();
+    if (receiptLookupError) {
+      return res.status(500).json({ success: false, status: 500, message: 'Unable to verify callback idempotency.' });
     }
+    if (existingReceipt) {
+      if (existingReceipt.organization_id !== organizationId) {
+        return res.status(409).json({ success: false, status: 409, message: 'Callback event is already associated with another organization.' });
+      }
+      return res.json({ success: true, duplicate: true, status: 200, message: 'Callback already processed or in progress.', data: existingReceipt });
+    }
+
+    const { error: receiptInsertError } = await supabase.from('n8n_callback_receipts').insert([{
+      event_id: String(eventId),
+      organization_id: organizationId,
+      execution_id: execId || null,
+      payload_hash: payloadHash,
+      status: 'processing',
+      received_at: nowIso
+    }]);
+    if (receiptInsertError) {
+      if (receiptInsertError.code === '23505') {
+        return res.json({ success: true, duplicate: true, status: 200, message: 'Callback already processed or in progress.' });
+      }
+      return res.status(500).json({ success: false, status: 500, message: 'Unable to register callback receipt.' });
+    }
+
+    // Resolve the Lead inside the signed callback tenant before allowing any update.
+    let leadQuery = supabase
+      .from('leads')
+      .select('id, email, organization_id')
+      .eq('organization_id', organizationId);
+    leadQuery = targetLeadId ? leadQuery.eq('id', targetLeadId) : leadQuery.eq('email', targetEmail);
+    const { data: lead, error: leadLookupError } = await leadQuery.maybeSingle();
+    if (leadLookupError || !lead) {
+      await supabase.from('n8n_callback_receipts').update({ status: 'failed' }).eq('event_id', String(eventId));
+      return res.status(leadLookupError ? 500 : 404).json({ success: false, status: leadLookupError ? 500 : 404, message: leadLookupError ? 'Unable to resolve callback Lead.' : 'Lead not found in callback organization.' });
+    }
+
+    const updateData: Record<string, any> = { updated_at: nowIso, last_activity: activityDesc };
+    if (status) updateData.status = status;
+    if (stage) updateData.stage = stage;
+    if (notes || summary) updateData.notes = notes || summary;
+
+    const { error: leadUpdateError } = await supabase
+      .from('leads')
+      .update(updateData)
+      .eq('id', lead.id)
+      .eq('organization_id', organizationId);
+    if (leadUpdateError) {
+      await supabase.from('n8n_callback_receipts').update({ status: 'failed' }).eq('event_id', String(eventId));
+      return res.status(500).json({ success: false, status: 500, message: 'Lead update failed.', error: leadUpdateError.message });
+    }
+
+    const auditPayload = {
+      organization_id: organizationId,
+      title: activityTitle || `n8n Workflow Completed: ${wfName}`,
+      description: activityDesc,
+      type: 'automation',
+      lead_name: companyName || contactName || lead.email || lead.id,
+      status: 'success',
+      created_at: nowIso
+    };
+    const { error: auditError } = await supabase.from('audit_logs').insert([auditPayload]);
+    if (auditError) {
+      await supabase.from('n8n_callback_receipts').update({ status: 'failed' }).eq('event_id', String(eventId));
+      return res.status(500).json({ success: false, status: 500, message: 'Audit log write failed.', error: auditError.message });
+    }
+
+    const { error: receiptCompleteError } = await supabase
+      .from('n8n_callback_receipts')
+      .update({ status: 'processed', processed_at: nowIso })
+      .eq('event_id', String(eventId));
+    if (receiptCompleteError) {
+      console.error('[n8n Callback Engine] Receipt completion update failed:', receiptCompleteError.message);
+    }
+
+    const updatedInSupabase = true;
+    const databaseError = null;
 
     return res.json({
       success: true,
       status: 200,
       message: `n8n callback processed successfully for lead '${targetLeadId || targetEmail}'`,
       data: {
-        leadId: targetLeadId || null,
-        email: targetEmail || null,
+        leadId: lead.id,
+        email: lead.email || targetEmail || null,
+        organizationId,
         status: status || null,
         stage: stage || null,
         lastActivity: activityDesc,
@@ -1112,4 +1211,12 @@ async function startServer() {
   });
 }
 
-startServer();
+export { app };
+export default app;
+
+if (process.env.VERCEL !== '1') {
+  startServer().catch((error) => {
+    console.error('Failed to start ZA Media server:', error);
+    process.exitCode = 1;
+  });
+}

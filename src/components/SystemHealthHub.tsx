@@ -15,6 +15,7 @@ import {
   Radio,
   ExternalLink
 } from 'lucide-react';
+import { authenticatedFetch } from '../lib/api';
 import { runLeadIntakeAutomationTest, LeadIntakeTestReport } from '../services/leads';
 import { runN8nDiagnosticCheck, resolveSafeWebhookUrl } from '../lib/webhookProxy';
 
@@ -36,7 +37,7 @@ export const SystemHealthHub: React.FC = () => {
   const fetchDiagnostics = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/system-diagnostics');
+      const res = await authenticatedFetch('/api/system-diagnostics');
       if (res.ok) {
         const json = await res.json();
         setDiagnostics(json.diagnostics);

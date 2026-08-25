@@ -140,50 +140,51 @@ function saveLocalLeads(leads: Lead[]): void {
  */
 
 export async function getLeads(): Promise<Lead[]> {
-  if (isSupabaseConfigured) {
-    const remoteLeads = await fetchLeadsFromSupabase();
-    if (remoteLeads !== null) {
-      return remoteLeads;
-    }
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase is not configured. Live lead data is unavailable.');
   }
-  return getLocalLeads();
+
+  const remoteLeads = await fetchLeadsFromSupabase();
+  if (remoteLeads === null) {
+    throw new Error('Supabase lead read failed. Local demo data was not used.');
+  }
+  return remoteLeads;
 }
 
 export async function createLead(lead: Lead): Promise<boolean> {
-  let success = false;
-  if (isSupabaseConfigured) {
-    success = await insertLeadToSupabase(lead);
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase is not configured. The lead was not saved.');
   }
-  
-  // Always update local storage backup as well
-  const current = getLocalLeads();
-  const updated = [lead, ...current.filter(l => l.id !== lead.id)];
-  saveLocalLeads(updated);
 
-  return success || !isSupabaseConfigured;
+  const success = await insertLeadToSupabase(lead);
+  if (!success) {
+    throw new Error('Supabase rejected the lead. The lead was not saved locally or remotely.');
+  }
+  return true;
 }
 
 export async function updateLeadStage(leadId: string, stage: PipelineStage): Promise<boolean> {
-  let success = false;
-  if (isSupabaseConfigured) {
-    success = await updateLeadStageInSupabase(leadId, stage);
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase is not configured. The lead stage was not updated.');
   }
 
-  const current = getLocalLeads();
-  const updated = current.map(l => l.id === leadId ? { ...l, stage } : l);
-  saveLocalLeads(updated);
-
-  return success || !isSupabaseConfigured;
+  const success = await updateLeadStageInSupabase(leadId, stage);
+  if (!success) {
+    throw new Error('Supabase rejected the lead stage update.');
+  }
+  return true;
 }
 
 export async function deleteAllLeads(): Promise<boolean> {
-  let success = false;
-  if (isSupabaseConfigured) {
-    success = await clearLeadsInSupabase();
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase is not configured. No records were deleted.');
   }
 
-  saveLocalLeads([]);
-  return success || !isSupabaseConfigured;
+  const success = await clearLeadsInSupabase();
+  if (!success) {
+    throw new Error('Supabase rejected the pipeline reset.');
+  }
+  return true;
 }
 
 /**

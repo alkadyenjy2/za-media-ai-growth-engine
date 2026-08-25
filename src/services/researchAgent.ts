@@ -1,3 +1,4 @@
+import { authenticatedFetch } from '../lib/api';
 export interface CompetitorItem {
   competitorName: string;
   positioning: string;
@@ -41,7 +42,7 @@ export async function runMarketIntelligenceResearch(params: {
     : (process.env.API_BASE_URL || 'http://localhost:3000/api/market-research');
 
   try {
-    const res = await fetch(endpoint, {
+    const res = await authenticatedFetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params)

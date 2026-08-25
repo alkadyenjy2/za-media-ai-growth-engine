@@ -1,24 +1,15 @@
+import { authenticatedFetch } from './api';
 /**
  * Webhook Proxy Security & Diagnostics Module
  * Enforces a strict whitelist for n8n Webhook destinations to prevent SSRF vulnerabilities
  * and provides diagnostic health check utilities.
  */
 
-export const DEFAULT_PRODUCTION_WEBHOOK_URL = 'https://enjywork.app.n8n.cloud/webhook/af61c8ab-cc19-4c8d-aa96-3ad5f55f10a6';
+export const DEFAULT_PRODUCTION_WEBHOOK_URL = '';
 
-export const HARDCODED_WEBHOOK_WHITELIST: readonly string[] = [
-  'https://enjywork.app.n8n.cloud/webhook/af61c8ab-cc19-4c8d-aa96-3ad5f55f10a6',
-  'https://enjywork.app.n8n.cloud/webhook-test/af61c8ab-cc19-4c8d-aa96-3ad5f55f10a6',
-  'https://n8n.zamedia.ai/webhook/af61c8ab-cc19-4c8d-aa96-3ad5f55f10a6',
-  'https://n8n.zamedia.ai/webhook/lead-intake',
-];
-
-export const ALLOWED_WEBHOOK_DOMAINS: readonly string[] = [
-  'enjywork.app.n8n.cloud',
-  'n8n.zamedia.ai',
-  'n8n.cloud',
-  'hook.n8n.cloud',
-];
+// Destinations are configured per environment; no customer or private host is embedded in source.
+export const HARDCODED_WEBHOOK_WHITELIST: readonly string[] = [];
+export const ALLOWED_WEBHOOK_DOMAINS: readonly string[] = [];
 
 /**
  * Validates a target webhook URL against SSRF rules and the whitelist of pre-approved destinations.
@@ -51,9 +42,7 @@ export function isAllowedWebhookUrl(targetUrl: string): boolean {
       host.endsWith('.internal') ||
       host.endsWith('.local')
     ) {
-      if (process.env.NODE_ENV === 'production') {
-        return false;
-      }
+      return false;
     }
 
     // 3. Check exact whitelist match
@@ -107,7 +96,7 @@ export function resolveSafeWebhookUrl(requestedUrl?: string): string {
     return envUrl.trim();
   }
 
-  return DEFAULT_PRODUCTION_WEBHOOK_URL;
+  return '';
 }
 
 /**
@@ -124,7 +113,7 @@ export async function runN8nDiagnosticCheck(targetUrl?: string): Promise<{
 
   try {
     // Perform a lightweight POST ping to the proxy or destination
-    const res = await fetch('/api/n8n-webhook', {
+    const res = await authenticatedFetch('/api/n8n-webhook', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

@@ -68,6 +68,25 @@ const validKey = rawKey && rawKey.trim().length > 0 ? rawKey : 'placeholder-key'
 
 export const supabase = createClient(validUrl, validKey);
 
+export async function getCurrentOrganizationId(): Promise<string> {
+  if (!isSupabaseConfigured) throw new Error('Supabase is not configured.');
+
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) throw new Error('Authenticated user is required.');
+
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('organization_id')
+    .eq('id', user.id)
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data?.organization_id) {
+    throw new Error('The authenticated user is not assigned to an organization.');
+  }
+  return data.organization_id as string;
+}
+
 /**
  * Helper to fetch leads from Supabase 'leads' table
  */
@@ -94,7 +113,22 @@ export async function fetchLeadsFromSupabase(): Promise<Lead[] | null> {
 
     if (!data) return [];
 
-    return data.map((row) => ({
+    const leadIds = data.map((row) => row.id).filter(Boolean);
+    const { data: scoreRows, error: scoreError } = leadIds.length > 0
+      ? await supabase
+          .from('ai_qualification_scores')
+          .select('lead_id, overall_score, icp_fit_score, budget_match_score, authority_score, key_insights, recommended_action')
+          .in('lead_id', leadIds)
+      : { data: [], error: null };
+
+    if (scoreError) {
+      console.warn('Supabase qualification score query failed:', scoreError.message);
+    }
+    const scoresByLeadId = new Map((scoreRows || []).map((score) => [score.lead_id, score]));
+
+    return data.map((row) => {
+      const scoreRow = scoresByLeadId.get(row.id);
+      return ({
       id: row.id,
       contactName: row.contact_name,
       companyName: row.company_name,
@@ -114,15 +148,16 @@ export async function fetchLeadsFromSupabase(): Promise<Lead[] | null> {
       likesCount: row.likes_count || 0,
       likedByMe: row.liked_by_me || false,
       score: {
-        overallScore: 85,
-        icpFitScore: 88,
-        budgetMatchScore: 80,
-        buyingIntentScore: 90,
-        decisionMakerVerified: true,
-        keyInsights: ['Sufficient monthly budget', 'Decision maker verified'],
-        recommendedAction: 'Schedule Discovery Call'
+        overallScore: Number(scoreRow?.overall_score) || 0,
+        icpFitScore: Number(scoreRow?.icp_fit_score) || 0,
+        budgetMatchScore: Number(scoreRow?.budget_match_score) || 0,
+        buyingIntentScore: Number(scoreRow?.authority_score) || 0,
+        decisionMakerVerified: Boolean(scoreRow),
+        keyInsights: Array.isArray(scoreRow?.key_insights) ? scoreRow.key_insights : [],
+        recommendedAction: scoreRow?.recommended_action || 'Awaiting qualification'
       }
-    }));
+    });
+    });
   } catch (err: any) {
     console.error('Failed to fetch from Supabase:', {
       supabaseUrl: validUrl,
@@ -141,6 +176,7 @@ export async function insertLeadToSupabase(lead: Lead): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
 
   try {
+    const organizationId = await getCurrentOrganizationId();
     const isUuid = (id?: string) => Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
     const validLeadId = isUuid(lead.id) ? lead.id : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '00000000-0000-4000-8000-' + Date.now().toString(16).padStart(12, '0'));
     const companyId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '00000000-0000-4000-8000-' + (Date.now() + 1).toString(16).padStart(12, '0');
@@ -148,23 +184,27 @@ export async function insertLeadToSupabase(lead: Lead): Promise<boolean> {
 
     // 1. Ensure Company row exists if companies table is present
     try {
-      await supabase.from('companies').upsert([
+      const { error: companyError } = await supabase.from('companies').upsert([
         {
           id: companyId,
+          organization_id: organizationId,
           name: lead.companyName || 'Target Company',
           industry: lead.industry || 'Roofing & Construction',
           country: 'Egypt'
         }
       ], { onConflict: 'id' });
-    } catch {
-      // Optional bypass if company schema differs
+      if (companyError) throw companyError;
+    } catch (error) {
+      console.error('Supabase company persistence failed:', error);
+      return false;
     }
 
     // 2. Ensure Contact row exists if contacts table is present
     try {
-      await supabase.from('contacts').upsert([
+      const { error: contactError } = await supabase.from('contacts').upsert([
         {
           id: contactId,
+          organization_id: organizationId,
           company_id: companyId,
           full_name: lead.contactName || 'Valued Prospect',
           email: lead.email,
@@ -173,13 +213,16 @@ export async function insertLeadToSupabase(lead: Lead): Promise<boolean> {
           is_decision_maker: true
         }
       ], { onConflict: 'id' });
-    } catch {
-      // Optional bypass if contact schema differs
+      if (contactError) throw contactError;
+    } catch (error) {
+      console.error('Supabase contact persistence failed:', error);
+      return false;
     }
 
     // 3. Insert / Upsert into public.leads table
     const leadPayload: any = {
       id: validLeadId,
+      organization_id: organizationId,
       contact_name: lead.contactName,
       company_name: lead.companyName,
       avatar_url: lead.avatarUrl || null,
@@ -202,21 +245,16 @@ export async function insertLeadToSupabase(lead: Lead): Promise<boolean> {
     const { error } = await supabase.from('leads').upsert([leadPayload], { onConflict: 'id' });
 
     if (error) {
-      console.warn('Primary public.leads upsert retry without FKs:', error.message);
-      delete leadPayload.company_id;
-      delete leadPayload.contact_id;
-      const { error: fallbackErr } = await supabase.from('leads').upsert([leadPayload], { onConflict: 'id' });
-      if (fallbackErr) {
-        console.error('Supabase fallback insertLead error:', fallbackErr.message);
-        return false;
-      }
+      console.error('Supabase public.leads upsert failed:', error.message);
+      return false;
     }
 
     // 4. Save AI qualification score if present
     if (lead.score) {
       try {
-        await supabase.from('ai_qualification_scores').insert([
+        const { error: scoreError } = await supabase.from('ai_qualification_scores').upsert([
           {
+            organization_id: organizationId,
             lead_id: validLeadId,
             overall_score: lead.score.overallScore,
             icp_fit_score: lead.score.icpFitScore,
@@ -228,16 +266,22 @@ export async function insertLeadToSupabase(lead: Lead): Promise<boolean> {
             model_version: 'gemini-3.6-flash',
             prompt_used: 'Gemini AI Lead Qualification Engine'
           }
-        ]);
-      } catch {
-        // Optional score record bypass
+        ], { onConflict: 'lead_id' });
+        if (scoreError) {
+          console.error('Supabase qualification score persistence failed:', scoreError.message);
+          return false;
+        }
+      } catch (error) {
+        console.error('Supabase qualification score persistence failed:', error);
+        return false;
       }
 
       // Record audit event in ai_actions table
-      await logAiActionToSupabase({
+      const auditSuccess = await logAiActionToSupabase({
         agent_name: 'Gemini AI Lead Qualification',
         action_type: 'lead_scored',
         target_lead_id: validLeadId,
+        organization_id: organizationId,
         payload: {
           companyName: lead.companyName,
           overallScore: lead.score.overallScore,
@@ -247,6 +291,7 @@ export async function insertLeadToSupabase(lead: Lead): Promise<boolean> {
         },
         status: 'success'
       });
+      if (!auditSuccess) return false;
     }
 
     console.log('✅ Lead successfully written to public.leads table in Supabase:', validLeadId);
@@ -401,8 +446,10 @@ export async function fetchActivityLogsFromSupabase(): Promise<ActivityLog[] | n
 export async function insertActivityLogToSupabase(log: { title: string; description: string; type?: string }) {
   if (!isSupabaseConfigured) return false;
   try {
+    const organizationId = await getCurrentOrganizationId();
     const { error } = await supabase.from('ai_actions').insert([
       {
+        organization_id: organizationId,
         action_type: 'lead_scored',
         initiated_by: 'user',
         details: `${log.title}: ${log.description}`,
@@ -428,55 +475,47 @@ export async function logAiActionToSupabase(action: {
   agent_name: string;
   action_type: string;
   target_lead_id?: string;
+  organization_id?: string;
   payload: any;
   status: 'success' | 'failed' | 'pending';
 }) {
   if (!isSupabaseConfigured) return false;
+
   try {
+    const organizationId = action.organization_id || await getCurrentOrganizationId();
     const isUuid = (id?: string) => Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
     const targetId = isUuid(action.target_lead_id) ? action.target_lead_id : null;
+    const validAuditId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : '00000000-0000-4000-8000-' + Date.now().toString(16).padStart(12, '0');
 
-    // Primary: Write to confirmed public.audit_logs table
-    try {
-      const isUuid = (id?: string) => Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
-      const validAuditId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '00000000-0000-4000-8000-' + Date.now().toString(16).padStart(12, '0');
-      
-      await supabase.from('audit_logs').insert([
-        {
-          id: validAuditId,
-          title: `${action.agent_name}: ${action.action_type}`,
-          description: typeof action.payload === 'string' ? action.payload : JSON.stringify(action.payload),
-          type: 'automation',
-          lead_name: action.payload?.companyName || action.payload?.contactName || targetId || 'General',
-          status: action.status,
-          created_at: new Date().toISOString()
-        }
-      ]);
-    } catch {
-      // Non-blocking fallback
-    }
+    const { error: auditError } = await supabase.from('audit_logs').insert([{
+      id: validAuditId,
+      organization_id: organizationId,
+      title: `${action.agent_name}: ${action.action_type}`,
+      description: typeof action.payload === 'string' ? action.payload : JSON.stringify(action.payload),
+      type: 'automation',
+      lead_name: action.payload?.companyName || action.payload?.contactName || targetId || 'General',
+      status: action.status,
+      created_at: new Date().toISOString()
+    }]);
+    if (auditError) throw new Error(`audit_logs write failed: ${auditError.message}`);
 
-    // Secondary: Also attempt ai_actions table if present
-    try {
-      const allowedActionTypes = ['lead_scored', 'whatsapp_dispatched', 'proposal_generated', 'mrr_projected', 'content_drafted'];
-      const validActionType = allowedActionTypes.includes(action.action_type) ? action.action_type : 'lead_scored';
+    const allowedActionTypes = ['lead_scored', 'whatsapp_dispatched', 'proposal_generated', 'mrr_projected', 'content_drafted'];
+    const validActionType = allowedActionTypes.includes(action.action_type) ? action.action_type : 'lead_scored';
+    const detailsObj = typeof action.payload === 'string'
+      ? { agent: action.agent_name, details: action.payload }
+      : { agent: action.agent_name, original_type: action.action_type, ...action.payload };
 
-      const detailsObj = typeof action.payload === 'string' 
-        ? { agent: action.agent_name, details: action.payload }
-        : { agent: action.agent_name, original_type: action.action_type, ...action.payload };
-
-      await supabase.from('ai_actions').insert([
-        {
-          action_type: validActionType,
-          target_id: targetId,
-          initiated_by: 'system',
-          details: JSON.stringify(detailsObj),
-          timestamp: new Date().toISOString()
-        }
-      ]);
-    } catch {
-      // Non-blocking fallback
-    }
+    const { error: actionError } = await supabase.from('ai_actions').insert([{
+      organization_id: organizationId,
+      action_type: validActionType,
+      target_id: targetId,
+      initiated_by: 'system',
+      details: JSON.stringify(detailsObj),
+      timestamp: new Date().toISOString()
+    }]);
+    if (actionError) throw new Error(`ai_actions write failed: ${actionError.message}`);
 
     return true;
   } catch (err) {
@@ -562,7 +601,9 @@ export async function fetchContentPostsFromSupabase(): Promise<ContentPost[] | n
 export async function insertContentPostToSupabase(post: ContentPost): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
   try {
+    const organizationId = await getCurrentOrganizationId();
     const payload = {
+      organization_id: organizationId,
       niche: post.niche,
       headline: post.headline,
       post: post.post,
@@ -639,7 +680,9 @@ export async function deleteContentPostFromSupabase(id: string): Promise<boolean
 export async function insertAuditLogToSupabase(log: { title: string; description: string; type?: string; leadName?: string; status?: string }): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
   try {
+    const organizationId = await getCurrentOrganizationId();
     const payload = {
+      organization_id: organizationId,
       title: log.title,
       description: log.description,
       type: log.type || 'qualification',
@@ -651,16 +694,15 @@ export async function insertAuditLogToSupabase(log: { title: string; description
     const { error } = await supabase.from('audit_logs').insert([payload]);
 
     if (error) {
-      console.warn('Supabase audit_logs insert warning, falling back to ai_actions table:', error.message);
-      // Fallback write to ai_actions if audit_logs table schema is not initialized
-      return await insertActivityLogToSupabase({ title: log.title, description: log.description, type: log.type });
+      console.error('Supabase audit_logs insert failed:', error.message);
+      return false;
     }
 
     console.log('✅ Activity written to public.audit_logs table in Supabase:', log.title);
     return true;
   } catch (err) {
     console.error('Failed to insert audit log to Supabase:', err);
-    return await insertActivityLogToSupabase({ title: log.title, description: log.description, type: log.type });
+    return false;
   }
 }
 

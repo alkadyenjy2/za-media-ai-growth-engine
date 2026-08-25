@@ -1,6 +1,7 @@
 import { Lead } from '../types';
 import { logAiActionToSupabase } from '../lib/supabase';
 
+import { authenticatedFetch } from '../lib/api';
 export interface N8NExecutionResponse {
   success: boolean;
   httpStatus: number;
@@ -26,13 +27,7 @@ export class N8NIntegrationService {
     if (envUrl && envUrl.trim().length > 0) {
       return envUrl.trim();
     }
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('n8n_webhook_url');
-      if (saved && saved.trim().length > 0) {
-        return saved.trim();
-      }
-    }
-    return 'https://enjywork.app.n8n.cloud/webhook/af61c8ab-cc19-4c8d-aa96-3ad5f55f10a6';
+    return '';
   }
 
   /**
@@ -53,7 +48,7 @@ export class N8NIntegrationService {
         ? '/api/n8n-webhook'
         : (process.env.API_BASE_URL || 'http://localhost:3000/api/n8n-webhook');
 
-      const res = await fetch(endpoint, {
+      const res = await authenticatedFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
@@ -339,6 +334,17 @@ export class N8NIntegrationService {
     webhookUrl?: string
   ): Promise<N8NExecutionResponse> {
     const targetUrl = webhookUrl || this.defaultWebhookUrl;
+    if (!targetUrl) {
+      return {
+        success: false,
+        httpStatus: 0,
+        isLive: false,
+        deliveryStatus: 'Not configured',
+        details: 'n8n webhook URL is not configured on the server.',
+        error: 'N8N_WEBHOOK_URL is required.'
+      };
+    }
+
     const payload = {
       event: 'lead_intake',
       timestamp: new Date().toISOString(),

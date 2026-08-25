@@ -1,3 +1,4 @@
+import { authenticatedFetch } from '../lib/api';
 export interface N8nNodeTrace {
   nodeName: string;
   status: 'completed' | 'failed' | 'running';
@@ -63,7 +64,7 @@ export async function fetchN8nWorkflowsAndStats(): Promise<{
   stats: N8nSystemStats;
 }> {
   try {
-    const res = await fetch('/api/n8n/workflows');
+    const res = await authenticatedFetch('/api/n8n/workflows');
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}: Failed to fetch workflows`);
     }
@@ -106,7 +107,7 @@ export async function fetchN8nExecutionLogs(statusFilter: string = 'all', limit:
 }> {
   try {
     const query = new URLSearchParams({ limit: String(limit), status: statusFilter });
-    const res = await fetch(`/api/n8n/executions?${query.toString()}`);
+    const res = await authenticatedFetch(`/api/n8n/executions?${query.toString()}`);
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}: Failed to fetch execution logs`);
     }
@@ -134,7 +135,7 @@ export async function triggerN8nWorkflowTest(params: {
   success: boolean;
   execution: N8nExecutionLog;
 }> {
-  const res = await fetch('/api/n8n/test-trigger', {
+  const res = await authenticatedFetch('/api/n8n/test-trigger', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params)
@@ -154,7 +155,7 @@ export async function analyzeN8nErrorWithAi(params: {
   payload?: any;
   httpStatus?: number;
 }): Promise<N8nAutofixRemediation> {
-  const res = await fetch('/api/n8n/autofix-error', {
+  const res = await authenticatedFetch('/api/n8n/autofix-error', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params)

@@ -1,6 +1,7 @@
 import { Lead } from '../types';
 import { logAiActionToSupabase, fetchRawAiActionsFromSupabase } from '../lib/supabase';
 
+import { authenticatedFetch } from '../lib/api';
 export interface N8nProviderReceipt {
   provider: string;
   http_status: number;
@@ -64,7 +65,7 @@ export async function dispatchN8nWebhook(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 second timeout
 
-    const res = await fetch('/api/n8n-webhook', {
+    const res = await authenticatedFetch('/api/n8n-webhook', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: controller.signal,

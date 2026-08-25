@@ -3,6 +3,7 @@ import { logAiActionToSupabase, fetchRawAiActionsFromSupabase } from '../lib/sup
 import { runLiveN8nPipeline } from './n8nWebhookService';
 import { DEFAULT_PRODUCTION_WEBHOOK_URL } from '../lib/webhookProxy';
 
+import { authenticatedFetch } from '../lib/api';
 /**
  * Executes full End-to-End test pipeline for a lead via n8nWebhookService:
  * 1. Qualification (lead_scored)
@@ -21,7 +22,7 @@ export async function runEndToEndPipelineTest(lead: Lead, customWebhookUrl?: str
  */
 export async function executeSalesAutomationForLead(lead: Lead): Promise<SalesAutomationPackage> {
   try {
-    const res = await fetch('/api/sales-automation', {
+    const res = await authenticatedFetch('/api/sales-automation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -144,7 +145,7 @@ export async function triggerN8nWebhook(
     });
 
     // Call server proxy route to ensure reliable dispatch
-    const res = await fetch('/api/n8n-webhook', {
+    const res = await authenticatedFetch('/api/n8n-webhook', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

@@ -179,28 +179,35 @@ function DashboardApp() {
     }
   };
 
-  const handleAddLead = async (rawLead: Lead) => {
-    // 0. Pass new lead through Gemini AI Lead Scoring Engine first
+  const handleAddLead = async (rawLead: Lead): Promise<void> => {
+    // AI qualification must complete before the lead is persisted.
     const scoredLead = await scoreLeadWithGemini(rawLead);
+    await createLead(scoredLead);
 
-    // 1. Direct registration & persistence to Supabase (Source of Truth)
+    // React state is updated only after the remote source of truth accepts the row.
     const updatedLeads = [scoredLead, ...leads.filter(l => l.id !== scoredLead.id)];
     setLeads(updatedLeads);
     setRevenueMetrics(calculateRevenueMetrics(updatedLeads));
-    
-    // Persist to Supabase public.leads table
-    await createLead(scoredLead);
 
-    // 2. Asynchronous trigger to n8n orchestration engine
-    n8nService.dispatchLeadIntake(scoredLead).then(res => {
-      console.log('[n8n Orchestration] Inbound lead dispatched:', res.deliveryStatus);
-    }).catch(err => {
-      console.warn('[n8n Orchestration] Non-blocking dispatch notice:', err?.message || err);
-    });
+    let activityStatus: ActivityLog['status'] = 'success';
+    let deliveryDescription = 'Lead was saved to Supabase; n8n delivery is pending verification.';
+    try {
+      const dispatchResult = await n8nService.dispatchLeadIntake(scoredLead);
+      if (dispatchResult.success) {
+        deliveryDescription = `Lead was saved to Supabase; n8n accepted the webhook (${dispatchResult.deliveryStatus}).`;
+      } else {
+        activityStatus = 'pending';
+        deliveryDescription = `Lead was saved to Supabase, but n8n dispatch failed: ${dispatchResult.details}.`;
+      }
+    } catch (err: any) {
+      activityStatus = 'pending';
+      deliveryDescription = `Lead was saved to Supabase, but n8n delivery is pending: ${err?.message || 'unknown error'}.`;
+    }
 
-    // 3. Log event to audit history
-    const title = 'Inbound Lead Evaluated & Dispatched to n8n';
-    const desc = `Lead scored (${scoredLead.score?.overallScore || 85}/100 - ${scoredLead.status}) for ${scoredLead.companyName}. Saved to Supabase & queued for n8n workflow orchestration.`;
+    const title = activityStatus === 'success'
+      ? 'Inbound Lead Qualified and Webhook Accepted'
+      : 'Inbound Lead Qualified; Automation Pending';
+    const desc = `Lead scored (${scoredLead.score.overallScore}/100 - ${scoredLead.status}) for ${scoredLead.companyName}. ${deliveryDescription}`;
     const newLog: ActivityLog = {
       id: `act-${Date.now()}`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
@@ -208,10 +215,10 @@ function DashboardApp() {
       title,
       description: desc,
       leadName: scoredLead.companyName,
-      status: 'success'
+      status: activityStatus
     };
     setActivityLogs(prev => [newLog, ...prev]);
-    logActivity(title, desc, 'automation_triggered');
+    await logActivity(title, desc, 'automation_triggered');
   };
 
   const handleRunSalesAutomation = async (targetLead: Lead) => {
