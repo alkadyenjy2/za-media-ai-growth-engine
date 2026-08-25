@@ -1,0 +1,6 @@
+{
+  "name": "ZA Media AI Growth Engine",
+  "description": "ZA Media AI Growth Engine - Demo Dashboard v1 Complete",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
