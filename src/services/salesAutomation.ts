@@ -84,7 +84,7 @@ export async function executeSalesAutomationForLead(lead: Lead): Promise<SalesAu
     followUpTask: isHot ? 'Send WhatsApp calendar link & dispatch priority email in 24h' : 'Route to 3-part automated email nurture sequence',
     followUpDays: isHot ? 1 : 2,
     generatedAt: new Date().toISOString(),
-    n8nDispatched: true
+    n8nDispatched: false
   };
 
   // Log fallback AI action to Supabase
@@ -141,7 +141,7 @@ export async function triggerN8nWebhook(
         event: payload.event,
         monthlyBudget: lead.monthlyBudget
       },
-      status: 'success'
+      status: 'pending'
     });
 
     // Call server proxy route to ensure reliable dispatch
@@ -157,19 +157,19 @@ export async function triggerN8nWebhook(
     if (res.ok) {
       const data = await res.json();
       return {
-        success: data.success ?? true,
+        success: Boolean(data.success),
         message: data.message || `Dispatched automation payload for ${lead.companyName} to n8n.`
       };
     }
 
     return {
-      success: true,
-      message: `Dispatched lead automation event for ${lead.companyName} to ${webhookUrl}`
+      success: false,
+      message: `n8n dispatch failed for ${lead.companyName}: HTTP ${res.status}`
     };
   } catch (err: any) {
     return {
-      success: true,
-      message: `Event processed for ${lead.companyName}: ${err?.message || 'Workflow dispatched'}`
+      success: false,
+      message: `n8n dispatch error for ${lead.companyName}: ${err?.message || 'Network dispatch failed'}`
     };
   }
 }
