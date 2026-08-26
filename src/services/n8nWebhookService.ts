@@ -391,7 +391,7 @@ export async function runLiveN8nPipeline(
   else if (hasLive) overallStatus = 'PARTIAL_SUCCESS';
 
   return {
-    success: true,
+    success: overallStatus === 'LIVE_EXECUTED',
     stepsLogged,
     rawRecords,
     isLiveN8n: hasLive,
