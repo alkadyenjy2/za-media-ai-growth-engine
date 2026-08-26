@@ -771,8 +771,9 @@ app.post("/api/score-lead", async (req, res) => {
     const ai = getGenAiClient();
 
     if (!ai) {
-      return res.status(500).json({ 
+      return res.status(503).json({ 
         success: false, 
+        code: 'AI_NOT_CONFIGURED',
         error: "GEMINI_API_KEY environment variable is missing on server." 
       });
     }
@@ -857,8 +858,9 @@ app.post("/api/sales-automation", async (req, res) => {
     const ai = getGenAiClient();
 
     if (!ai) {
-      return res.status(500).json({ 
+      return res.status(503).json({ 
         success: false, 
+        code: 'AI_NOT_CONFIGURED',
         error: "GEMINI_API_KEY environment variable is missing on server." 
       });
     }
@@ -935,8 +937,9 @@ app.post("/api/generate-content", async (req, res) => {
     const ai = getGenAiClient();
 
     if (!ai) {
-      return res.status(500).json({ 
+      return res.status(503).json({ 
         success: false, 
+        code: 'AI_NOT_CONFIGURED',
         error: "GEMINI_API_KEY environment variable is missing on server." 
       });
     }
@@ -999,8 +1002,9 @@ app.post("/api/market-research", async (req, res) => {
     const ai = getGenAiClient();
 
     if (!ai) {
-      return res.status(500).json({ 
+      return res.status(503).json({ 
         success: false, 
+        code: 'AI_NOT_CONFIGURED',
         error: "GEMINI_API_KEY environment variable is missing on server." 
       });
     }
