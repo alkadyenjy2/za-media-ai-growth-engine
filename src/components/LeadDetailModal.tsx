@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Lead } from '../types';
 import { triggerN8nWebhook } from '../services/salesAutomation';
+import { isExternalAutomationDisabled, RESTRICTED_GO_LIVE_MESSAGE } from '../lib/restrictedLaunch';
 import { createWhatsAppLink } from '../utils/whatsapp';
 import { logAiActionToSupabase } from '../lib/supabase';
 import { 
@@ -49,6 +50,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   if (!lead) return null;
 
   const handleSendGmailEmail = async () => {
+    if (isExternalAutomationDisabled) return;
     setGmailSent(true);
     await logAiActionToSupabase({
       agent_name: 'Gmail API',
@@ -74,7 +76,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   };
 
   const handleDispatchToN8n = async () => {
-    if (!lead.salesAutomation) return;
+    if (isExternalAutomationDisabled || !lead.salesAutomation) return;
     setIsDispatching(true);
     setN8nStatus(null);
     try {
@@ -192,7 +194,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                     <h5 className="font-bold text-sm text-white flex items-center gap-2">
                       AI Sales Automation Execution Package
                       <span className="text-[10px] bg-purple-950 border border-purple-800 text-purple-300 font-mono px-2 py-0.5 rounded">
-                        Active
+                        {isExternalAutomationDisabled ? 'Prepared · Restricted' : 'Active'}
                       </span>
                     </h5>
                     <p className="text-[11px] text-slate-400">
@@ -203,11 +205,12 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
 
                 <button
                   onClick={handleDispatchToN8n}
-                  disabled={isDispatching}
-                  className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer disabled:opacity-50"
+                  disabled={isDispatching || isExternalAutomationDisabled}
+                  title={isExternalAutomationDisabled ? RESTRICTED_GO_LIVE_MESSAGE : 'Dispatch to n8n'}
+                  className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  {isDispatching ? 'Dispatching to n8n...' : 'Trigger n8n Outreach'}
+                  {isExternalAutomationDisabled ? 'n8n Disabled' : isDispatching ? 'Dispatching to n8n...' : 'Trigger n8n Outreach'}
                 </button>
               </div>
 
@@ -235,10 +238,12 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                   <div className="flex items-center gap-2">
                     <button
                       onClick={handleSendGmailEmail}
-                      className="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold flex items-center gap-1 transition-all shadow-sm cursor-pointer"
+                      disabled={isExternalAutomationDisabled}
+                      title={isExternalAutomationDisabled ? RESTRICTED_GO_LIVE_MESSAGE : 'Send via Gmail API'}
+                      className="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold flex items-center gap-1 transition-all shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Send className="w-3 h-3" />
-                      <span>{gmailSent ? 'Gmail Dispatched ✓' : 'Send via Gmail API'}</span>
+                      <span>{isExternalAutomationDisabled ? 'Gmail Disabled' : gmailSent ? 'Gmail Dispatched ✓' : 'Send via Gmail API'}</span>
                     </button>
                     <button
                       onClick={() => handleCopy(`${lead.salesAutomation?.emailSubject}\n\n${lead.salesAutomation?.emailBody}`, 'email')}
@@ -281,15 +286,21 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                         )}
                       </button>
 
-                      <a
-                        href={createWhatsAppLink(lead.phone, lead.salesAutomation.socialDmText)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-2 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] flex items-center gap-1 transition-all shadow-sm"
-                      >
-                        <span>Open WhatsApp</span>
-                        <ExternalLink className="w-2.5 h-2.5" />
-                      </a>
+                      {isExternalAutomationDisabled ? (
+                        <span className="px-2 py-0.5 rounded-lg bg-slate-800 text-slate-500 font-bold text-[10px] flex items-center gap-1 cursor-not-allowed" title={RESTRICTED_GO_LIVE_MESSAGE}>
+                          WhatsApp Disabled
+                        </span>
+                      ) : (
+                        <a
+                          href={createWhatsAppLink(lead.phone, lead.salesAutomation.socialDmText)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] flex items-center gap-1 transition-all shadow-sm"
+                        >
+                          <span>Open WhatsApp</span>
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      )}
                     </div>
                   </div>
                   <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-300 leading-relaxed font-sans">
@@ -422,13 +433,16 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
             </button>
             <button
               onClick={() => {
+                if (isExternalAutomationDisabled) return;
                 alert(`Triggered n8n WhatsApp follow-up automation for ${lead.companyName}!`);
                 onClose();
               }}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 shadow-md shadow-indigo-600/30 transition-all"
+              disabled={isExternalAutomationDisabled}
+              title={isExternalAutomationDisabled ? RESTRICTED_GO_LIVE_MESSAGE : 'Trigger n8n follow-up'}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 shadow-md shadow-indigo-600/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Send className="w-3.5 h-3.5" />
-              Trigger n8n Follow-Up
+              {isExternalAutomationDisabled ? 'n8n Follow-Up Disabled' : 'Trigger n8n Follow-Up'}
             </button>
           </div>
         </div>

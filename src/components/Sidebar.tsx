@@ -1,5 +1,6 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
+import { isExternalAutomationDisabled } from '../lib/restrictedLaunch';
 import { 
   LayoutDashboard, 
   UserCheck, 
@@ -39,7 +40,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'team_leader', label: 'Multi-Agent Operations', icon: Bot, badge: 'AI COO' },
     { id: 'intake', label: 'Lead Intake & AI Scoring', icon: UserCheck, badge: 'AI Active' },
     { id: 'crm', label: 'CRM Pipeline Board', icon: Kanban },
-    { id: 'followup', label: 'Follow-up Workflows', icon: Workflow, badge: 'n8n Ready' },
+    { id: 'followup', label: 'Follow-up Workflows', icon: Workflow, badge: isExternalAutomationDisabled ? 'Disabled' : 'n8n Ready' },
     { id: 'digital_products', label: 'Digital Products OS', icon: Zap, badge: 'Revenue' },
     { id: 'research_agent', label: 'Market Intelligence', icon: Building2, badge: 'Tavily AI' },
     { id: 'content', label: 'Content Operations', icon: FileText },
@@ -97,7 +98,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="flex items-center gap-1 text-slate-300">
                   <Zap className="w-3 h-3 text-amber-400" /> n8n Automation
                 </span>
-                <span className="text-blue-400 font-medium">Ready</span>
+                <span className={isExternalAutomationDisabled ? "text-slate-400 font-medium" : "text-blue-400 font-medium"}>
+                  {isExternalAutomationDisabled ? "Disabled — Restricted" : "Ready"}
+                </span>
               </div>
               <div className="flex items-center justify-between text-[11px]">
                 <span className="flex items-center gap-1 text-slate-300">

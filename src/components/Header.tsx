@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { isExternalAutomationDisabled } from '../lib/restrictedLaunch';
 import { 
   Search, 
   Bell, 
@@ -41,7 +42,9 @@ export const Header: React.FC<HeaderProps> = ({
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   // Connection health states
-  const [n8nStatus, setN8nStatus] = useState<'connected' | 'checking' | 'error'>('checking');
+  const [n8nStatus, setN8nStatus] = useState<'connected' | 'checking' | 'error' | 'disabled'>(
+    isExternalAutomationDisabled ? 'disabled' : 'checking'
+  );
   const [supabaseStatus, setSupabaseStatus] = useState<'connected' | 'checking' | 'error'>('checking');
 
   useEffect(() => {
@@ -55,7 +58,14 @@ export const Header: React.FC<HeaderProps> = ({
         if (isMounted) setSupabaseStatus('error');
       }
 
-      // 2. n8n service health check endpoint query
+      // n8n is intentionally disabled for Restricted Go-Live. Application
+      // liveness must never be presented as orchestration connectivity.
+      if (isExternalAutomationDisabled) {
+        if (isMounted) setN8nStatus('disabled');
+        return;
+      }
+
+      // n8n service health check is only allowed after explicit enablement.
       try {
         const res = await fetch('/api/health');
         if (res.ok && isMounted) {
@@ -144,7 +154,19 @@ export const Header: React.FC<HeaderProps> = ({
         )}
 
         {/* n8n Automation Engine Connection Status Indicator */}
-        {n8nStatus === 'connected' ? (
+        {n8nStatus === 'disabled' ? (
+          <div
+            className="flex items-center gap-2 bg-slate-900/80 border border-slate-700/80 px-3 py-1.5 rounded-xl text-xs shadow-sm"
+            title="n8n automation is intentionally disabled for Restricted Go-Live"
+          >
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-slate-500" />
+            <span className="text-slate-400 font-bold flex items-center gap-1.5 text-[11px] sm:text-xs">
+              <Workflow className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <span className="hidden sm:inline">n8n Engine</span>
+              <span className="text-[10px] sm:text-xs">Disabled</span>
+            </span>
+          </div>
+        ) : n8nStatus === 'connected' ? (
           <div 
             className="flex items-center gap-2 bg-indigo-950/80 border border-indigo-500/50 px-3 py-1.5 rounded-xl text-xs shadow-sm"
             title="n8n Orchestration Webhook Engine connected and active"

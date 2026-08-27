@@ -18,6 +18,20 @@ app.use(express.json({
 }));
 const PORT = Number(process.env.PORT || 3000);
 
+// Restricted Go-Live is the safe default until a dedicated Z Media n8n
+// environment is verified. Explicitly set either flag to false for V2.
+const isRestrictedGoLive =
+  process.env.RESTRICTED_GO_LIVE !== 'false' &&
+  process.env.VITE_RESTRICTED_GO_LIVE !== 'false';
+
+function rejectRestrictedAutomation(res: Response) {
+  return res.status(503).json({
+    success: false,
+    code: 'AUTOMATION_DISABLED_RESTRICTED_GO_LIVE',
+    error: 'External automation is disabled for Restricted Go-Live.'
+  });
+}
+
 // Lazy initialization of Supabase Server Client
 function getSupabaseServerClient() {
   const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -93,7 +107,10 @@ function verifyN8nCallbackSignature(req: Request, res: Response, next: NextFunct
 // All API routes are protected by a real Supabase session except liveness and the signed n8n callback.
 app.use('/api', (req, res, next) => {
   if (req.path === '/health') return next();
-  if (req.path === '/n8n-callback') return verifyN8nCallbackSignature(req, res, next);
+  if (req.path === '/n8n-callback') {
+    if (isRestrictedGoLive) return rejectRestrictedAutomation(res);
+    return verifyN8nCallbackSignature(req, res, next);
+  }
   return requireAuth(req, res, next);
 });
 
@@ -118,6 +135,7 @@ import { isAllowedWebhookUrl, resolveSafeWebhookUrl } from "./src/lib/webhookPol
 
 // API endpoint for n8n Webhook Proxy & Execution
 app.post("/api/n8n-webhook", async (req, res) => {
+  if (isRestrictedGoLive) return rejectRestrictedAutomation(res);
   try {
     const { webhookUrl, payload, sync } = req.body;
     const targetUrl = resolveSafeWebhookUrl(webhookUrl);
@@ -437,6 +455,7 @@ function n8nApiHeaders(apiKey: string) {
 
 // GET /api/n8n/workflows - Read live workflow metadata only when n8n API credentials are configured.
 app.get("/api/n8n/workflows", async (_req, res) => {
+  if (isRestrictedGoLive) return rejectRestrictedAutomation(res);
   const config = getN8nApiConfig();
   if (!config) return res.status(503).json({ success: false, code: 'N8N_API_NOT_CONFIGURED', error: 'n8n API credentials are not configured.' });
   try {
@@ -453,6 +472,7 @@ app.get("/api/n8n/workflows", async (_req, res) => {
 
 // GET /api/n8n/executions - Read live execution logs only from n8n API.
 app.get("/api/n8n/executions", async (req, res) => {
+  if (isRestrictedGoLive) return rejectRestrictedAutomation(res);
   const config = getN8nApiConfig();
   if (!config) return res.status(503).json({ success: false, code: 'N8N_API_NOT_CONFIGURED', error: 'n8n API credentials are not configured.' });
   try {
@@ -473,6 +493,7 @@ app.get("/api/n8n/executions", async (req, res) => {
 
 // POST /api/n8n/test-trigger - Trigger only an explicitly configured, safe test webhook.
 app.post("/api/n8n/test-trigger", async (req, res) => {
+  if (isRestrictedGoLive) return rejectRestrictedAutomation(res);
   try {
     const finalUrl = process.env.N8N_TEST_WEBHOOK_URL;
     if (!finalUrl) return res.status(503).json({ success: false, code: 'N8N_TEST_WEBHOOK_NOT_CONFIGURED', error: 'A dedicated n8n test webhook is not configured.' });
@@ -544,6 +565,7 @@ app.post("/api/n8n/test-trigger", async (req, res) => {
 
 // POST /api/n8n/autofix-error - AI error analyzer and remediation agent for n8n workflows
 app.post("/api/n8n/autofix-error", async (req, res) => {
+  if (isRestrictedGoLive) return rejectRestrictedAutomation(res);
   try {
     const { errorMessage, nodeName, payload, httpStatus } = req.body;
     const ai = getGenAiClient();

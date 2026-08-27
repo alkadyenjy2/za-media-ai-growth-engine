@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Lead } from '../types';
 import { triggerN8nWebhook, runEndToEndPipelineTest } from '../services/salesAutomation';
+import { isExternalAutomationDisabled, RESTRICTED_GO_LIVE_MESSAGE } from '../lib/restrictedLaunch';
 import { createWhatsAppLink } from '../utils/whatsapp';
 import { logAiActionToSupabase } from '../lib/supabase';
 import { 
@@ -43,12 +44,14 @@ export const SalesAutomationHub: React.FC<SalesAutomationHubProps> = ({
   const [activeIntegrationTest, setActiveIntegrationTest] = useState<string | null>(null);
   const [savedBadge, setSavedBadge] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState(() => {
+    if (isExternalAutomationDisabled) return '';
     return typeof window !== 'undefined'
-      ? localStorage.getItem('n8n_webhook_url') || 'https://n8n.zamedia.ai/webhook/lead-intake'
-      : 'https://n8n.zamedia.ai/webhook/lead-intake';
+      ? localStorage.getItem('n8n_webhook_url') || ''
+      : '';
   });
 
   const handleUpdateWebhookUrl = (newUrl: string) => {
+    if (isExternalAutomationDisabled) return;
     setWebhookUrl(newUrl);
     if (typeof window !== 'undefined') {
       localStorage.setItem('n8n_webhook_url', newUrl);
@@ -81,6 +84,7 @@ export const SalesAutomationHub: React.FC<SalesAutomationHubProps> = ({
   };
 
   const handleCopyWebhook = () => {
+    if (isExternalAutomationDisabled || !webhookUrl) return;
     navigator.clipboard.writeText(webhookUrl);
     setCopiedUrl(true);
     setTimeout(() => setCopiedUrl(false), 2000);
@@ -152,44 +156,44 @@ export const SalesAutomationHub: React.FC<SalesAutomationHubProps> = ({
       name: 'Gmail API',
       icon: Mail,
       iconBg: 'bg-red-950 border-red-800 text-red-400',
-      status: 'Connected',
-      statusColor: 'text-emerald-400 bg-emerald-950 border-emerald-800',
-      details: 'Automated AI outreach email dispatch engine.',
-      actionText: 'Send Test Email',
-      action: () => testIntegration('Gmail API', 'Test draft verified in Sent items')
+      status: isExternalAutomationDisabled ? 'Disabled' : 'Connected',
+      statusColor: isExternalAutomationDisabled ? 'text-slate-400 bg-slate-900 border-slate-700' : 'text-emerald-400 bg-emerald-950 border-emerald-800',
+      details: isExternalAutomationDisabled ? RESTRICTED_GO_LIVE_MESSAGE : 'Automated AI outreach email dispatch engine.',
+      actionText: isExternalAutomationDisabled ? 'Disabled' : 'Send Test Email',
+      action: () => { if (!isExternalAutomationDisabled) testIntegration('Gmail API', 'Test draft verified in Sent items'); }
     },
     {
       id: 'whatsapp',
       name: 'WhatsApp Business API',
       icon: MessageSquare,
       iconBg: 'bg-emerald-950 border-emerald-800 text-emerald-400',
-      status: 'Ready',
-      statusColor: 'text-emerald-400 bg-emerald-950 border-emerald-800',
-      details: 'Direct messaging links & automated template dispatch.',
-      actionText: 'Verify Gateway',
-      action: () => testIntegration('WhatsApp Gateway', 'Cloud API handshake active & token verified')
+      status: isExternalAutomationDisabled ? 'Disabled' : 'Ready',
+      statusColor: isExternalAutomationDisabled ? 'text-slate-400 bg-slate-900 border-slate-700' : 'text-emerald-400 bg-emerald-950 border-emerald-800',
+      details: isExternalAutomationDisabled ? RESTRICTED_GO_LIVE_MESSAGE : 'Direct messaging links & automated template dispatch.',
+      actionText: isExternalAutomationDisabled ? 'Disabled' : 'Verify Gateway',
+      action: () => { if (!isExternalAutomationDisabled) testIntegration('WhatsApp Gateway', 'Cloud API handshake active & token verified'); }
     },
     {
       id: 'facebook',
       name: 'Facebook Publishing',
       icon: Share2,
       iconBg: 'bg-blue-950 border-blue-800 text-blue-400',
-      status: 'Syncing',
-      statusColor: 'text-cyan-400 bg-cyan-950 border-cyan-800',
-      details: 'Auto-schedules generated social media content.',
-      actionText: 'Test Post Auth',
-      action: () => testIntegration('Facebook Page API', 'Publish permissions verified for ZA Media Page')
+      status: isExternalAutomationDisabled ? 'Disabled' : 'Syncing',
+      statusColor: isExternalAutomationDisabled ? 'text-slate-400 bg-slate-900 border-slate-700' : 'text-cyan-400 bg-cyan-950 border-cyan-800',
+      details: isExternalAutomationDisabled ? RESTRICTED_GO_LIVE_MESSAGE : 'Auto-schedules generated social media content.',
+      actionText: isExternalAutomationDisabled ? 'Disabled' : 'Test Post Auth',
+      action: () => { if (!isExternalAutomationDisabled) testIntegration('Facebook Page API', 'Publish permissions verified for ZA Media Page'); }
     },
     {
       id: 'calendar',
       name: 'Google Calendar',
       icon: Calendar,
       iconBg: 'bg-indigo-950 border-indigo-800 text-indigo-400',
-      status: 'Connected',
-      statusColor: 'text-emerald-400 bg-emerald-950 border-emerald-800',
-      details: 'Auto-books discovery calls and schedules follow-up tasks.',
-      actionText: 'Check Slots',
-      action: () => testIntegration('Google Calendar', 'Primary calendar free/busy slots synced')
+      status: isExternalAutomationDisabled ? 'Disabled' : 'Connected',
+      statusColor: isExternalAutomationDisabled ? 'text-slate-400 bg-slate-900 border-slate-700' : 'text-emerald-400 bg-emerald-950 border-emerald-800',
+      details: isExternalAutomationDisabled ? RESTRICTED_GO_LIVE_MESSAGE : 'Auto-books discovery calls and schedules follow-up tasks.',
+      actionText: isExternalAutomationDisabled ? 'Disabled' : 'Check Slots',
+      action: () => { if (!isExternalAutomationDisabled) testIntegration('Google Calendar', 'Primary calendar free/busy slots synced'); }
     },
     {
       id: 'analytics',
