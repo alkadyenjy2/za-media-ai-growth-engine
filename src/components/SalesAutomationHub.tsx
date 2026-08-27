@@ -222,8 +222,12 @@ export const SalesAutomationHub: React.FC<SalesAutomationHubProps> = ({
                 <Bot className="w-3.5 h-3.5 text-purple-400" />
                 Autonomous Sales Engine
               </span>
-              <span className="px-2.5 py-0.5 rounded-full bg-emerald-950 border border-emerald-800 text-emerald-400 font-mono text-[11px] font-semibold">
-                n8n Connected
+              <span className={`px-2.5 py-0.5 rounded-full border font-mono text-[11px] font-semibold ${
+                isExternalAutomationDisabled
+                  ? 'bg-slate-900 border-slate-700 text-slate-400'
+                  : 'bg-emerald-950 border-emerald-800 text-emerald-400'
+              }`}>
+                {isExternalAutomationDisabled ? 'n8n Disabled — Restricted' : 'n8n Connected'}
               </span>
             </div>
             <h2 className="text-2xl font-black text-white tracking-tight">
