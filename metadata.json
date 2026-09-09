@@ -1,6 +1,0 @@
-{
-  "name": "ZA Media AI Growth Engine",
-  "description": "Baseline Audit Complete",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
