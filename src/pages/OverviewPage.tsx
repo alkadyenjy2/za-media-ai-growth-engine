@@ -60,6 +60,7 @@ export function OverviewPage() {
       setAudit(result.result ? {
         ...result.result,
         overall_score: result.result.overall_score ?? 0,
+        priority: result.result.priority ?? 'medium',
       } : null)
       setAuditMessage(result.result ? 'Growth audit completed and saved.' : 'No audit result returned.')
     } catch (auditError) {
