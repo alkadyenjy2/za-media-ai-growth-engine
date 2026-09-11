@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { requireProspectWorkspaceAccess } from '../_shared/workspace-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -59,10 +60,12 @@ Deno.serve(async (req) => {
     if (!prospectId) throw new Error('prospect_id is required')
 
     const supabase = createClient(supabaseUrl, serviceRoleKey)
+    const { workspaceId } = await requireProspectWorkspaceAccess(req, supabase, prospectId)
     const { data: profile, error: profileError } = await supabase
       .from('prospect_profiles')
       .select('id,canonical_name')
       .eq('id', prospectId)
+      .eq('workspace_id', workspaceId)
       .single()
     if (profileError) throw profileError
 
@@ -70,6 +73,7 @@ Deno.serve(async (req) => {
       .from('prospect_evidence')
       .select('*')
       .eq('prospect_id', prospectId)
+      .eq('workspace_id', workspaceId)
       .eq('evidence_status', 'active')
       .order('observed_at', { ascending: false })
       .limit(500)
@@ -88,9 +92,6 @@ Deno.serve(async (req) => {
       let strength = clamp(rule.base * (0.55 + confidence / 200) * freshness)
       let changeDetected = false
 
-      // Website/content evidence can become a signal only when a new observation differs
-      // from the previous observation for the same evidence key. This prevents ordinary
-      // re-crawls from becoming fake intent.
       if (rule.type === 'website_change' || rule.type === 'content_change') {
         const key = row.evidence_key
         if (!key) continue
@@ -112,6 +113,7 @@ Deno.serve(async (req) => {
       const rootEventKey = `${rule.type}:${row.evidence_key ?? row.id}:${row.content_hash ?? normalizedClaim}`
       candidates.push({
         prospect_id: prospectId,
+        workspace_id: workspaceId,
         signal_type: rule.type,
         strength,
         evidence_id: row.id,
@@ -131,7 +133,6 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Dedupe by root event before touching the database.
     const unique = new Map<string, any>()
     for (const candidate of candidates) {
       const key = candidate.signal_data.root_event_key
@@ -145,6 +146,7 @@ Deno.serve(async (req) => {
         .from('prospect_intent_signals')
         .select('id,signal_data')
         .eq('prospect_id', prospectId)
+        .eq('workspace_id', workspaceId)
       if (error) throw error
       existing.push(...(data ?? []))
     }
@@ -164,6 +166,7 @@ Deno.serve(async (req) => {
       entity_id: prospectId,
       actor: 'AI Core',
       details: {
+        workspace_id: workspaceId,
         prospect: profile.canonical_name,
         evidence_considered: activeSignals.length,
         candidates: candidates.length,
@@ -174,18 +177,9 @@ Deno.serve(async (req) => {
       },
     })
 
-    return json({
-      ok: true,
-      prospect_id: prospectId,
-      evidence_considered: activeSignals.length,
-      candidates: candidates.length,
-      unique_events: unique.size,
-      inserted: inserted.length,
-      skipped_duplicates: unique.size - toInsert.length,
-      signals: inserted,
-      note: 'Signals are evidence-backed and deduplicated by root_event_key. No synthetic prospect data is created.',
-    })
+    return json({ ok: true, prospect_id: prospectId, evidence_considered: activeSignals.length, candidates: candidates.length, unique_events: unique.size, inserted: inserted.length, skipped_duplicates: unique.size - toInsert.length, signals: inserted, note: 'Signals are evidence-backed and deduplicated by root_event_key. No synthetic prospect data is created.' })
   } catch (error) {
+    if (error instanceof Response) return error
     return json({ ok: false, error: error instanceof Error ? error.message : 'Unknown error' }, 500)
   }
 })
