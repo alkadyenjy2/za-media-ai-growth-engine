@@ -60,9 +60,9 @@ export function LeadsPage() {
     setQualifyingId(lead.id); setError(''); setAiMessage('')
     const result = await qualifyLead(lead)
     if (result.error) { setError(`AI qualification failed: ${result.error}`); setQualifyingId(null); return }
-    const next = { ...lead, ai_score: result.score, ai_qualification: result.qualification, ai_reasoning: result.reasoning, ai_recommended_action: result.recommended_action, ai_confidence: result.confidence, ai_evaluated_at: new Date().toISOString() }
+    const next: Lead = { ...lead, ai_score: result.score ?? 0, ai_qualification: result.qualification ?? null, ai_reasoning: result.reasoning ?? null, ai_recommended_action: result.recommended_action ?? null, ai_confidence: result.confidence ?? null, ai_evaluated_at: new Date().toISOString() }
     setLeads((current) => current.map((item) => item.id === lead.id ? next : item))
-    setAiMessage(`${lead.full_name}: ${result.score}/100 • ${result.qualification} • ${result.recommended_action}`)
+    setAiMessage(`${lead.full_name}: ${next.ai_score}/100 • ${next.ai_qualification} • ${next.ai_recommended_action}`)
     setQualifyingId(null)
   }
 
