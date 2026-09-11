@@ -38,6 +38,9 @@ function demoQuery(): any {
 
 const demoSupabase: any = {
   from: () => demoQuery(),
+  functions: {
+    invoke: async () => ({ data: null, error: { message: 'Supabase is not configured' } }),
+  },
   auth: {
     getSession: async () => ({ data: { session: null }, error: null }),
     getUser: async () => ({ data: { user: null }, error: null }),
