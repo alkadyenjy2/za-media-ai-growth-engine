@@ -5,3 +5,9 @@ verify_jwt = true
 
 [functions.ai-audit]
 verify_jwt = true
+
+[functions.website-intelligence]
+verify_jwt = true
+
+[functions.social-intelligence]
+verify_jwt = true
