@@ -95,6 +95,8 @@ export interface ProspectProfile {
 
 export type ProspectEvidenceType = 'identity' | 'website' | 'social' | 'seo' | 'geo' | 'intent' | 'firmographic' | 'technographic' | 'behavior' | 'review' | 'campaign' | 'other'
 export type ProspectSourceType = 'public' | 'first_party' | 'internal' | 'derived'
+export type ProspectEvidenceStatus = 'active' | 'stale' | 'invalid' | 'superseded'
+export type ProspectEvidenceSeverity = 'info' | 'low' | 'medium' | 'high' | 'critical'
 
 export interface ProspectEvidence {
   id: string
@@ -106,6 +108,14 @@ export interface ProspectEvidence {
   claim: string
   evidence_data: Record<string, unknown>
   confidence: number | null
+  evidence_key: string | null
+  evidence_status: ProspectEvidenceStatus
+  extractor: string | null
+  severity: ProspectEvidenceSeverity | null
+  impact: string | null
+  content_hash: string | null
+  http_status: number | null
+  mime_type: string | null
   observed_at: string
   expires_at: string | null
   created_at: string
