@@ -47,23 +47,23 @@ export function OverviewPage() {
   const runAudit = async () => {
     setAuditLoading(true)
     setAuditMessage('')
-    const result = await runGrowthAudit({
-      data: {
-        total_leads: leads.length,
-        qualified_leads: qualified,
-        open_conversations: conversationCount,
-        paid_revenue: revenue,
-        pipeline,
-      },
-    })
-    if (result.error) {
-      setAuditMessage(result.error.message)
+    try {
+      const result = await runGrowthAudit({
+        data: {
+          total_leads: leads.length,
+          qualified_leads: qualified,
+          open_conversations: conversationCount,
+          paid_revenue: revenue,
+          pipeline,
+        },
+      })
+      setAudit(result.result ?? null)
+      setAuditMessage(result.result ? 'Growth audit completed and saved.' : 'No audit result returned.')
+    } catch (auditError) {
+      setAuditMessage(auditError instanceof Error ? auditError.message : 'AI growth audit failed')
+    } finally {
       setAuditLoading(false)
-      return
     }
-    setAudit(result.data?.result ?? null)
-    setAuditMessage(result.data ? 'Growth audit completed and saved.' : 'No audit result returned.')
-    setAuditLoading(false)
   }
 
   return <div className="animate-fade-in space-y-7">
