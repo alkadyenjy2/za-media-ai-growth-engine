@@ -5,8 +5,8 @@ import { supabase } from '../lib/supabase'
 const problems = [
   { icon: Users, title: 'Leads falling through the cracks', desc: 'Prospects contact you but nobody follows up in time.' },
   { icon: Clock, title: 'Manual follow-ups', desc: 'Your team wastes hours on repetitive outreach instead of closing deals.' },
-  { icon: ChartLine, title: 'No visibility into performance', desc: 'You can\'t tell which campaigns actually generate revenue.' },
-  { icon: Search, title: 'Weak digital presence', desc: 'Your website and social channels don\'t convert visitors into customers.' },
+  { icon: ChartLine, title: 'No visibility into performance', desc: 'You cannot tell which campaigns actually generate revenue.' },
+  { icon: Search, title: 'Weak digital presence', desc: 'Your website and social channels do not convert visitors into customers.' },
 ]
 
 const services = [
@@ -83,7 +83,7 @@ export function LandingPage({ onEnterDashboard }: { onEnterDashboard: () => void
     <section className="border-t border-white/10 bg-gradient-to-b from-neutral-900 to-neutral-950 py-20">
       <div className="mx-auto max-w-3xl px-4 text-center sm:px-8">
         <h2 className="font-display text-3xl font-bold sm:text-4xl">Ready to grow?</h2>
-        <p className="mt-3 text-neutral-400">Get a free AI growth audit. We\'ll analyze your digital presence and show you exactly where opportunities are hiding.</p>
+        <p className="mt-3 text-neutral-400">Get a free AI growth audit. We will analyze your digital presence and show you exactly where opportunities are hiding.</p>
         <button onClick={() => setShowForm(true)} className="btn-primary mt-8 text-base">Request your AI growth audit <ArrowRight size={18}/></button>
       </div>
     </section>
@@ -94,7 +94,7 @@ export function LandingPage({ onEnterDashboard }: { onEnterDashboard: () => void
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/60 p-4 backdrop-blur-sm" onMouseDown={() => setShowForm(false)}>
         <div className="w-full max-w-md animate-slide-up rounded-2xl border border-white/10 bg-neutral-900 p-8 shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
           {submitted ? (
-            <div className="text-center"><div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-accent-500/20 text-accent-400"><Sparkles size={28}/></div><h3 className="font-display text-xl font-bold">Audit requested!</h3><p className="mt-2 text-sm text-neutral-400">We\'ll analyze your digital presence and reach out within 24 hours.</p><button onClick={() => { setShowForm(false); setSubmitted(false); setForm({ full_name: '', email: '', phone: '', company: '' }) }} className="btn-secondary mt-6 w-full">Done</button></div>
+            <div className="text-center"><div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-accent-500/20 text-accent-400"><Sparkles size={28}/></div><h3 className="font-display text-xl font-bold">Audit requested!</h3><p className="mt-2 text-sm text-neutral-400">We will analyze your digital presence and reach out within 24 hours.</p><button onClick={() => { setShowForm(false); setSubmitted(false); setForm({ full_name: '', email: '', phone: '', company: '' }) }} className="btn-secondary mt-6 w-full">Done</button></div>
           ) : (
             <><div className="mb-6"><h3 className="font-display text-xl font-bold">Get your AI growth audit</h3><p className="mt-1 text-sm text-neutral-400">Free analysis of your digital presence and growth opportunities.</p></div>
             <form onSubmit={submit} className="space-y-4">
