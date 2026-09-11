@@ -37,6 +37,12 @@ export interface Lead {
   source: string
   status: LeadStatus
   score: number
+  ai_score: number | null
+  ai_qualification: 'low' | 'medium' | 'high' | null
+  ai_reasoning: string | null
+  ai_recommended_action: string | null
+  ai_confidence: number | null
+  ai_evaluated_at: string | null
   project_type: string
   estimated_value: number
   last_contacted_at: string | null
@@ -44,6 +50,21 @@ export interface Lead {
   updated_at: string
   companies?: { name: string } | null
   social_pages?: { name: string } | null
+}
+
+export interface AiAudit {
+  id: string
+  company_id: string | null
+  lead_id: string | null
+  audit_type: string
+  overall_score: number | null
+  strengths: string[]
+  weaknesses: string[]
+  opportunities: string[]
+  recommended_actions: string[]
+  priority: 'low' | 'medium' | 'high' | null
+  source_data: Record<string, unknown>
+  created_at: string
 }
 
 export interface Campaign {
