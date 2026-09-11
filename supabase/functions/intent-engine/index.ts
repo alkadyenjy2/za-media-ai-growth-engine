@@ -1,0 +1,191 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+const jsonHeaders = { ...corsHeaders, 'Content-Type': 'application/json' }
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: jsonHeaders })
+
+const now = () => new Date()
+const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)))
+const text = (v: unknown) => String(v ?? '').trim().toLowerCase()
+const daysAgo = (date: string | null | undefined) => {
+  if (!date) return 999
+  return Math.max(0, (Date.now() - new Date(date).getTime()) / 86400000)
+}
+
+const SIGNAL_RULES: Array<{ type: string; patterns: RegExp[]; base: number; ttl: number; subtype: string }> = [
+  { type: 'hiring', patterns: [/\bhiring\b/, /\bcareers?\b/, /\bopen roles?\b/, /\bjobs?\b/, /\bvacanc(y|ies)\b/, /\bwe are growing\b/], base: 72, ttl: 30, subtype: 'hiring_activity' },
+  { type: 'leadership_change', patterns: [/\bnew (ceo|cmo|cro|coo|cto|head of|director|vp|vice president)\b/, /\bappointed\b/, /\bnamed .* as (ceo|cmo|cro|coo|cto)\b/, /\bjoined as (ceo|cmo|cro|coo|cto|head|director)\b/], base: 86, ttl: 60, subtype: 'leadership_change' },
+  { type: 'job_change', patterns: [/\bjoined\b/, /\bmoved to\b/, /\bpromoted\b/, /\bnew role\b/, /\bstarted .* role\b/, /\bchampion\b/], base: 78, ttl: 45, subtype: 'people_change' },
+  { type: 'expansion', patterns: [/\bexpanded\b/, /\bexpansion\b/, /\bnew location\b/, /\bnew office\b/, /\bentered .* market\b/, /\bexpanding into\b/, /\bopening in\b/], base: 82, ttl: 60, subtype: 'business_expansion' },
+  { type: 'launch', patterns: [/\blaunched\b/, /\blaunching\b/, /\bnew product\b/, /\bnew service\b/, /\bnew offer\b/, /\bnow available\b/, /\bintroducing\b/], base: 84, ttl: 45, subtype: 'product_or_service_launch' },
+  { type: 'campaign', patterns: [/\bcampaign\b/, /\bpromotion\b/, /\bpromotional offer\b/, /\bseasonal offer\b/, /\bblack friday\b/, /\bsale\b/], base: 68, ttl: 21, subtype: 'campaign_activity' },
+  { type: 'ad_activity', patterns: [/\bad activity\b/, /\bads?\b/, /\badvertis(ing|ement)\b/, /\bmeta pixel\b/, /\bfacebook pixel\b/, /\bgoogle ads\b/], base: 66, ttl: 21, subtype: 'advertising_activity' },
+  { type: 'technology_change', patterns: [/\bnew (crm|analytics|marketing stack|technology|platform)\b/, /\badopted\b/, /\bmigrat(ed|ing)\b/, /\bswitched to\b/, /\btech stack\b/], base: 58, ttl: 45, subtype: 'technology_change' },
+  { type: 'content_change', patterns: [/\bcontent\b/, /\bblog\b/, /\bcase stud(y|ies)\b/, /\bresource\b/, /\bcontent velocity\b/], base: 48, ttl: 21, subtype: 'content_activity' },
+  { type: 'website_change', patterns: [/\bpricing\b/, /\blanding page\b/, /\bwebsite\b/, /\bhomepage\b/, /\bcanonical\b/, /\bjson-ld\b/, /\bstructured data\b/], base: 52, ttl: 14, subtype: 'website_change' },
+  { type: 'engagement', patterns: [/\bengagement\b/, /\bfollowers?\b/, /\bcomments?\b/, /\bshares?\b/, /\bviews?\b/], base: 42, ttl: 14, subtype: 'engagement_change' },
+]
+
+function detectRule(evidence: any) {
+  const haystack = [evidence.evidence_key, evidence.claim, evidence.source_name, JSON.stringify(evidence.evidence_data ?? {})].join(' ').toLowerCase()
+  return SIGNAL_RULES.find((rule) => rule.patterns.some((pattern) => pattern.test(haystack))) ?? null
+}
+
+function freshnessFactor(observedAt: string | null | undefined) {
+  const age = daysAgo(observedAt)
+  if (age <= 1) return 1
+  if (age <= 7) return 0.92
+  if (age <= 14) return 0.82
+  if (age <= 30) return 0.68
+  if (age <= 60) return 0.5
+  return 0.3
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  if (req.method !== 'POST') return json({ ok: false, error: 'Method not allowed' }, 405)
+
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    if (!supabaseUrl || !serviceRoleKey) throw new Error('Supabase server configuration is missing')
+
+    const input = await req.json()
+    const prospectId = String(input.prospect_id ?? '').trim()
+    if (!prospectId) throw new Error('prospect_id is required')
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey)
+    const { data: profile, error: profileError } = await supabase
+      .from('prospect_profiles')
+      .select('id,canonical_name')
+      .eq('id', prospectId)
+      .single()
+    if (profileError) throw profileError
+
+    const { data: evidenceRows, error: evidenceError } = await supabase
+      .from('prospect_evidence')
+      .select('*')
+      .eq('prospect_id', prospectId)
+      .eq('evidence_status', 'active')
+      .order('observed_at', { ascending: false })
+      .limit(500)
+    if (evidenceError) throw evidenceError
+
+    const evidence = evidenceRows ?? []
+    const activeSignals = evidence.filter((row) => !row.expires_at || new Date(row.expires_at).getTime() > Date.now())
+    const candidates: any[] = []
+
+    for (const row of activeSignals) {
+      const rule = detectRule(row)
+      if (!rule) continue
+
+      const confidence = clamp(Number(row.confidence ?? 0.6) * 100)
+      const freshness = freshnessFactor(row.observed_at)
+      let strength = clamp(rule.base * (0.55 + confidence / 200) * freshness)
+      let changeDetected = false
+
+      // Website/content evidence can become a signal only when a new observation differs
+      // from the previous observation for the same evidence key. This prevents ordinary
+      // re-crawls from becoming fake intent.
+      if (rule.type === 'website_change' || rule.type === 'content_change') {
+        const key = row.evidence_key
+        if (!key) continue
+        const previous = evidence.find((candidate) =>
+          candidate.id !== row.id &&
+          candidate.evidence_key === key &&
+          new Date(candidate.observed_at).getTime() < new Date(row.observed_at).getTime(),
+        )
+        if (!previous) continue
+        const currentHash = row.content_hash ?? null
+        const previousHash = previous.content_hash ?? null
+        if (currentHash && previousHash) changeDetected = currentHash !== previousHash
+        else changeDetected = JSON.stringify(row.evidence_data ?? {}) !== JSON.stringify(previous.evidence_data ?? {})
+        if (!changeDetected) continue
+        strength = clamp(strength + 12)
+      }
+
+      const normalizedClaim = text(row.claim).replace(/\s+/g, ' ').slice(0, 220)
+      const rootEventKey = `${rule.type}:${row.evidence_key ?? row.id}:${row.content_hash ?? normalizedClaim}`
+      candidates.push({
+        prospect_id: prospectId,
+        signal_type: rule.type,
+        strength,
+        evidence_id: row.id,
+        expires_at: new Date(Date.now() + rule.ttl * 86400000).toISOString(),
+        signal_data: {
+          subtype: rule.subtype,
+          root_event_key: rootEventKey,
+          evidence_ids: [row.id],
+          source_type: row.source_type,
+          source_name: row.source_name,
+          confidence: Number(row.confidence ?? 0.6),
+          freshness_factor: Number(freshness.toFixed(3)),
+          change_detected: changeDetected,
+          generated_by: 'intent-engine/deterministic-v1',
+        },
+        detected_at: row.observed_at ?? now().toISOString(),
+      })
+    }
+
+    // Dedupe by root event before touching the database.
+    const unique = new Map<string, any>()
+    for (const candidate of candidates) {
+      const key = candidate.signal_data.root_event_key
+      if (!unique.has(key) || candidate.strength > unique.get(key).strength) unique.set(key, candidate)
+    }
+
+    const keys = [...unique.keys()]
+    const existing: any[] = []
+    if (keys.length) {
+      const { data, error } = await supabase
+        .from('prospect_intent_signals')
+        .select('id,signal_data')
+        .eq('prospect_id', prospectId)
+      if (error) throw error
+      existing.push(...(data ?? []))
+    }
+    const existingKeys = new Set(existing.map((row) => row.signal_data?.root_event_key).filter(Boolean))
+    const toInsert = [...unique.values()].filter((row) => !existingKeys.has(row.signal_data.root_event_key))
+
+    let inserted: any[] = []
+    if (toInsert.length) {
+      const { data, error } = await supabase.from('prospect_intent_signals').insert(toInsert).select()
+      if (error) throw error
+      inserted = data ?? []
+    }
+
+    await supabase.from('audit_logs').insert({
+      action: 'intent_engine_run',
+      entity_type: 'prospect_profile',
+      entity_id: prospectId,
+      actor: 'AI Core',
+      details: {
+        prospect: profile.canonical_name,
+        evidence_considered: activeSignals.length,
+        candidates: candidates.length,
+        unique_events: unique.size,
+        inserted: inserted.length,
+        skipped_duplicates: unique.size - toInsert.length,
+        engine: 'deterministic-v1',
+      },
+    })
+
+    return json({
+      ok: true,
+      prospect_id: prospectId,
+      evidence_considered: activeSignals.length,
+      candidates: candidates.length,
+      unique_events: unique.size,
+      inserted: inserted.length,
+      skipped_duplicates: unique.size - toInsert.length,
+      signals: inserted,
+      note: 'Signals are evidence-backed and deduplicated by root_event_key. No synthetic prospect data is created.',
+    })
+  } catch (error) {
+    return json({ ok: false, error: error instanceof Error ? error.message : 'Unknown error' }, 500)
+  }
+})
