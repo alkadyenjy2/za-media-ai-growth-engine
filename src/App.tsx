@@ -9,11 +9,16 @@ import { CampaignsPage } from './pages/CampaignsPage'
 import { CompaniesPage } from './pages/CompaniesPage'
 import { IncomePage } from './pages/IncomePage'
 import { AuditPage } from './pages/AuditPage'
+import { AuthProvider } from './auth/AuthProvider'
+import { RequireAuth } from './auth/RequireAuth'
+
+function Dashboard() {
+  const [page, setPage] = useState<PageKey>('overview')
+  const content = page === 'overview' ? <OverviewPage /> : page === 'leads' ? <LeadsPage /> : page === 'conversations' ? <ConversationsPage /> : page === 'campaigns' ? <CampaignsPage /> : page === 'companies' ? <CompaniesPage /> : page === 'income' ? <IncomePage /> : <AuditPage />
+  return <Layout active={page} onNavigate={setPage}>{content}</Layout>
+}
 
 export default function App() {
   const [view, setView] = useState<'website' | 'dashboard'>('website')
-  const [page, setPage] = useState<PageKey>('overview')
-  if (view === 'website') return <LandingPage onEnterDashboard={() => setView('dashboard')} />
-  const content = page === 'overview' ? <OverviewPage /> : page === 'leads' ? <LeadsPage /> : page === 'conversations' ? <ConversationsPage /> : page === 'campaigns' ? <CampaignsPage /> : page === 'companies' ? <CompaniesPage /> : page === 'income' ? <IncomePage /> : <AuditPage />
-  return <Layout active={page} onNavigate={setPage}>{content}</Layout>
+  return <AuthProvider>{view === 'website' ? <LandingPage onEnterDashboard={() => setView('dashboard')} /> : <RequireAuth><Dashboard /></RequireAuth>}</AuthProvider>
 }
