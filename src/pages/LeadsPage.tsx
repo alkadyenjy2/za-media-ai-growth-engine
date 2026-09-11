@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Pencil, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { Brain, Pencil, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { supabase, supabaseConfigured } from '../lib/supabase'
+import { qualifyLead } from '../lib/ai'
 import type { Lead, LeadStatus } from '../types/database'
 import { StatusBadge } from '../components/StatusBadge'
 import { Modal } from '../components/Modal'
@@ -17,7 +18,9 @@ export function LeadsPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
+  const [qualifyingId, setQualifyingId] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [aiMessage, setAiMessage] = useState('')
 
   const logAction = async (action: string, details: Record<string, unknown>) => {
     if (!supabaseConfigured) return
@@ -53,6 +56,16 @@ export function LeadsPage() {
     setForm(emptyForm); setShowModal(false); setEditingId(null); await load(); setSaving(false)
   }
 
+  const qualify = async (lead: Lead) => {
+    setQualifyingId(lead.id); setError(''); setAiMessage('')
+    const result = await qualifyLead(lead)
+    if (result.error) { setError(`AI qualification failed: ${result.error}`); setQualifyingId(null); return }
+    const next = { ...lead, ai_score: result.score, ai_qualification: result.qualification, ai_reasoning: result.reasoning, ai_recommended_action: result.recommended_action, ai_confidence: result.confidence, ai_evaluated_at: new Date().toISOString() }
+    setLeads((current) => current.map((item) => item.id === lead.id ? next : item))
+    setAiMessage(`${lead.full_name}: ${result.score}/100 • ${result.qualification} • ${result.recommended_action}`)
+    setQualifyingId(null)
+  }
+
   const updateStatus = async (id: string, status: LeadStatus) => {
     const { error: updateError } = await supabase.from('leads').update({ status, updated_at: new Date().toISOString() }).eq('id', id)
     if (updateError) { setError(updateError.message); return }
@@ -77,12 +90,13 @@ export function LeadsPage() {
       <button className="btn-primary" onClick={openCreate}><Plus size={17}/> Add lead</button>
     </div>
     {error && <div className="rounded-xl border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700">{error}<button className="ml-2 text-error-500 hover:text-error-700" onClick={() => setError('')}>Dismiss</button></div>}
+    {aiMessage && <div className="rounded-xl border border-accent-200 bg-accent-50 px-4 py-3 text-sm text-accent-800"><Brain size={16} className="mr-2 inline"/>{aiMessage}</div>}
     <div className="card overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-neutral-200 p-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="relative max-w-sm flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={17}/><input className="input pl-9" placeholder="Search leads..." value={query} onChange={(event) => setQuery(event.target.value)}/></div>
         <div className="flex flex-wrap items-center gap-2"><SlidersHorizontal size={16} className="text-neutral-400"/>{statuses.map((status) => <button key={status} onClick={() => setFilter(status)} className={`rounded-lg px-3 py-1.5 text-xs font-semibold capitalize transition-colors ${filter === status ? 'bg-neutral-900 text-white' : 'text-neutral-500 hover:bg-neutral-100'}`}>{status}</button>)}</div>
       </div>
-      <div className="overflow-x-auto"><table className="w-full min-w-[860px] text-left text-sm">
+      <div className="overflow-x-auto"><table className="w-full min-w-[980px] text-left text-sm">
         <thead className="bg-neutral-50 text-xs uppercase tracking-wider text-neutral-500"><tr>
           <th className="px-5 py-3 font-semibold">Lead</th><th className="px-5 py-3 font-semibold">Source</th><th className="px-5 py-3 font-semibold">AI score</th><th className="px-5 py-3 font-semibold">Value</th><th className="px-5 py-3 font-semibold">Status</th><th className="px-5 py-3 font-semibold">Created</th><th className="px-5 py-3 font-semibold">Actions</th>
         </tr></thead>
@@ -92,11 +106,11 @@ export function LeadsPage() {
           : filtered.map((lead) => <tr key={lead.id} className="group hover:bg-neutral-50">
             <td className="px-5 py-4"><div className="font-semibold text-neutral-800">{lead.full_name}</div><div className="mt-0.5 text-xs text-neutral-500">{lead.email || lead.phone || 'No contact details'}</div></td>
             <td className="px-5 py-4"><div className="text-neutral-700">{lead.source}</div><div className="text-xs text-neutral-400">{lead.project_type}</div></td>
-            <td className="px-5 py-4"><div className="flex items-center gap-2"><div className="h-1.5 w-16 overflow-hidden rounded-full bg-neutral-200"><div className={`h-full rounded-full ${lead.score >= 70 ? 'bg-accent-500' : lead.score >= 40 ? 'bg-warning-500' : 'bg-neutral-400'}`} style={{ width: `${lead.score}%` }}/></div><span className="text-xs font-bold text-neutral-600">{lead.score}</span></div></td>
+            <td className="px-5 py-4"><div className="flex items-center gap-2"><div className="h-1.5 w-16 overflow-hidden rounded-full bg-neutral-200"><div className={`h-full rounded-full ${Number(lead.ai_score ?? lead.score) >= 70 ? 'bg-accent-500' : Number(lead.ai_score ?? lead.score) >= 40 ? 'bg-warning-500' : 'bg-neutral-400'}`} style={{ width: `${Number(lead.ai_score ?? lead.score)}%` }}/></div><span className="text-xs font-bold text-neutral-600">{lead.ai_score ?? lead.score}</span>{lead.ai_qualification && <span className="text-[10px] font-semibold uppercase text-neutral-400">{lead.ai_qualification}</span>}</div></td>
             <td className="px-5 py-4 font-semibold text-neutral-700">${Number(lead.estimated_value).toLocaleString()}</td>
             <td className="px-5 py-4"><select value={lead.status} onChange={(event) => void updateStatus(lead.id, event.target.value as LeadStatus)} className="cursor-pointer border-0 bg-transparent p-0 text-xs focus:ring-0"><option value="new">New</option><option value="contacted">Contacted</option><option value="qualified">Qualified</option><option value="appointment">Appointment</option><option value="won">Won</option><option value="lost">Lost</option></select><div className="mt-1"><StatusBadge status={lead.status}/></div></td>
             <td className="px-5 py-4 text-xs text-neutral-500">{new Date(lead.created_at).toLocaleDateString()}</td>
-            <td className="px-5 py-4"><div className="flex items-center gap-2"><button onClick={() => openEdit(lead)} className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"><Pencil size={15}/></button><button onClick={() => void deleteLead(lead.id)} className="rounded-lg p-1.5 text-neutral-400 hover:bg-error-50 hover:text-error-600"><Trash2 size={15}/></button></div></td>
+            <td className="px-5 py-4"><div className="flex items-center gap-2"><button onClick={() => void qualify(lead)} disabled={qualifyingId === lead.id || !supabaseConfigured} title={!supabaseConfigured ? 'Connect Supabase to enable AI' : 'Run AI qualification'} className="rounded-lg p-1.5 text-neutral-400 hover:bg-accent-50 hover:text-accent-700 disabled:cursor-not-allowed disabled:opacity-40">{qualifyingId === lead.id ? <span className="text-[10px]">AI…</span> : <Brain size={15}/>}</button><button onClick={() => openEdit(lead)} className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"><Pencil size={15}/></button><button onClick={() => void deleteLead(lead.id)} className="rounded-lg p-1.5 text-neutral-400 hover:bg-error-50 hover:text-error-600"><Trash2 size={15}/></button></div></td>
           </tr>)}
         </tbody>
       </table></div>
