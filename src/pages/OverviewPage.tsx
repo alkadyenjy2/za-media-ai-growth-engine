@@ -57,7 +57,10 @@ export function OverviewPage() {
           pipeline,
         },
       })
-      setAudit(result.result ?? null)
+      setAudit(result.result ? {
+        ...result.result,
+        overall_score: result.result.overall_score ?? 0,
+      } : null)
       setAuditMessage(result.result ? 'Growth audit completed and saved.' : 'No audit result returned.')
     } catch (auditError) {
       setAuditMessage(auditError instanceof Error ? auditError.message : 'AI growth audit failed')
