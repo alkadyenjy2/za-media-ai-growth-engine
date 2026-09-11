@@ -1,24 +1,15 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { requireProspectWorkspaceAccess } from '../_shared/workspace-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
-const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
-  status,
-  headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-})
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)))
 
-const RULES: Record<string, {
-  type: string
-  problem: string
-  impact: string
-  action: string
-  serviceFamilies: string[]
-  base: number
-}> = {
+const RULES: Record<string, { type: string; problem: string; impact: string; action: string; serviceFamilies: string[]; base: number }> = {
   website_change: { type: 'conversion_optimization', problem: 'A material website change may indicate a changing offer, funnel, or customer journey that should be reviewed for conversion impact.', impact: 'Unreviewed changes can create conversion friction or leave new demand-generation opportunities untapped.', action: 'Review the changed website surface and identify the highest-impact conversion or growth intervention.', serviceFamilies: ['Website & Conversion', 'Growth Strategy'], base: 72 },
   content_change: { type: 'content_growth', problem: 'Recent content activity creates an opportunity to assess whether content is aligned with demand generation and conversion.', impact: 'Content investment may underperform when topics, offers, distribution, or CTAs are not connected to a growth objective.', action: 'Audit the content pattern and propose a focused content-to-lead improvement.', serviceFamilies: ['Content & Social', 'Growth Strategy'], base: 68 },
   ad_activity: { type: 'paid_growth_optimization', problem: 'Active advertising activity creates an opportunity to evaluate creative, funnel, targeting, and conversion efficiency.', impact: 'Paid demand can be wasted when creative and landing experiences are not aligned.', action: 'Review the visible campaign signal and prepare a paid-growth optimization hypothesis.', serviceFamilies: ['Paid Advertising', 'Creative & Content'], base: 78 },
@@ -31,20 +22,8 @@ const RULES: Record<string, {
   job_change: { type: 'champion_window', problem: 'A relevant job change can create a new stakeholder or champion window for a timely, evidence-based conversation.', impact: 'Timing may improve when the stakeholder is newly responsible for the relevant growth problem.', action: 'Verify role relevance and prepare a personalized, non-automated outreach hypothesis.', serviceFamilies: ['Growth Strategy', 'Lead Generation'], base: 75 },
   engagement: { type: 'social_engagement', problem: 'Meaningful public engagement can indicate an active topic or audience interest worth connecting to a growth offer.', impact: 'Relevant engagement can be lost when it is not converted into a useful business conversation.', action: 'Review the engagement context and identify a helpful, non-spammy next action.', serviceFamilies: ['Content & Social', 'Lead Generation'], base: 62 },
 }
-
-function freshnessFactor(date: string | null | undefined) {
-  if (!date) return 0.3
-  const age = Math.max(0, (Date.now() - new Date(date).getTime()) / 86400000)
-  if (age <= 1) return 1
-  if (age <= 7) return 0.92
-  if (age <= 14) return 0.82
-  if (age <= 30) return 0.68
-  return 0.45
-}
-
-function rootKey(signal: any) {
-  return String(signal.signal_data?.root_event_key ?? signal.id)
-}
+function freshnessFactor(date: string | null | undefined) { if (!date) return 0.3; const age = Math.max(0, (Date.now() - new Date(date).getTime()) / 86400000); if (age <= 1) return 1; if (age <= 7) return 0.92; if (age <= 14) return 0.82; if (age <= 30) return 0.68; return 0.45 }
+function rootKey(signal: any) { return String(signal.signal_data?.root_event_key ?? signal.id) }
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -57,25 +36,21 @@ Deno.serve(async (req) => {
     const prospectId = String(input.prospect_id ?? '').trim()
     if (!prospectId) throw new Error('prospect_id is required')
     const supabase = createClient(url, serviceKey)
+    const { workspaceId } = await requireProspectWorkspaceAccess(req, supabase, prospectId)
     const { data: profile, error: profileError } = await supabase.from('prospect_profiles').select('id,canonical_name,fit_score,intent_score,opportunity_score,priority_score,confidence_score').eq('id', prospectId).single()
     if (profileError) throw profileError
     const { data: signals, error: signalError } = await supabase.from('prospect_intent_signals').select('id,signal_type,strength,evidence_id,signal_data,detected_at,expires_at').eq('prospect_id', prospectId).order('detected_at', { ascending: false }).limit(500)
     if (signalError) throw signalError
     const activeSignals = (signals ?? []).filter((s) => !s.expires_at || new Date(s.expires_at).getTime() > Date.now())
-    if (!activeSignals.length) {
-      await supabase.from('audit_logs').insert({ action: 'opportunity_engine_run', entity_type: 'prospect_profile', entity_id: prospectId, actor: 'AI Core', details: { engine: 'opportunity-v1', created: 0, reason: 'No active intent signals', synthetic_data_created: false } })
-      return json({ ok: true, prospect_id: prospectId, created: 0, opportunities: [], note: 'No active evidence-backed signals; no opportunity created.' })
-    }
+    if (!activeSignals.length) return json({ ok: true, prospect_id: prospectId, created: 0, opportunities: [], note: 'No active evidence-backed signals; no opportunity created.' })
     const evidenceIds = [...new Set(activeSignals.flatMap((s) => s.evidence_id ? [s.evidence_id] : []))]
     const { data: evidence, error: evidenceError } = evidenceIds.length ? await supabase.from('prospect_evidence').select('id,evidence_type,source_type,source_name,source_url,claim,evidence_data,confidence,observed_at,evidence_key,impact,severity').in('id', evidenceIds) : { data: [], error: null }
     if (evidenceError) throw evidenceError
     const evidenceById = new Map((evidence ?? []).map((e) => [e.id, e]))
     const candidates = new Map<string, any>()
     for (const signal of activeSignals) {
-      const rule = RULES[signal.signal_type]
-      if (!rule) continue
-      const evidenceRow = signal.evidence_id ? evidenceById.get(signal.evidence_id) : null
-      if (!evidenceRow) continue
+      const rule = RULES[signal.signal_type]; if (!rule) continue
+      const evidenceRow = signal.evidence_id ? evidenceById.get(signal.evidence_id) : null; if (!evidenceRow) continue
       const confidence = Math.max(0, Math.min(1, Number(signal.signal_data?.confidence ?? evidenceRow.confidence ?? 0.6)))
       const freshness = freshnessFactor(signal.detected_at)
       const strength = Math.max(0, Math.min(100, Number(signal.strength ?? 0)))
@@ -84,28 +59,27 @@ Deno.serve(async (req) => {
       const score = clamp(rule.base * 0.35 + strength * 0.25 + confidence * 100 * 0.15 + freshness * 100 * 0.1 + fit * 0.1 + intent * 0.05)
       const key = `${rule.type}:${rootKey(signal)}`
       const candidate = { opportunity_type: rule.type, problem: rule.problem, business_impact: rule.impact, opportunity_score: score, status: 'identified', opportunity_data: { engine: 'opportunity-v1', root_event_key: rootKey(signal), signal_type: signal.signal_type, signal_id: signal.id, evidence_id: evidenceRow.id, evidence_ids: [evidenceRow.id], evidence_claim: evidenceRow.claim, evidence_source: evidenceRow.source_name, evidence_url: evidenceRow.source_url, observed_at: evidenceRow.observed_at, confidence, freshness_factor: freshness, fit_score: fit, intent_score: intent, recommended_action: rule.action, candidate_service_families: rule.serviceFamilies, human_approval_required: true, synthetic_data_created: false }, _dedupe_key: key }
-      const previous = candidates.get(key)
-      if (!previous || candidate.opportunity_score > previous.opportunity_score) candidates.set(key, candidate)
+      const previous = candidates.get(key); if (!previous || candidate.opportunity_score > previous.opportunity_score) candidates.set(key, candidate)
     }
     const created: any[] = []
     for (const candidate of [...candidates.values()].sort((a, b) => b.opportunity_score - a.opportunity_score).slice(0, 10)) {
       const { data: existing } = await supabase.from('prospect_opportunities').select('id,opportunity_data,status').eq('prospect_id', prospectId).eq('opportunity_type', candidate.opportunity_type).limit(100)
       const match = (existing ?? []).find((row) => row.opportunity_data?.root_event_key === candidate.opportunity_data.root_event_key)
       if (match) {
-        const { data: updated, error } = await supabase.from('prospect_opportunities').update({ problem: candidate.problem, business_impact: candidate.business_impact, opportunity_score: candidate.opportunity_score, opportunity_data: candidate.opportunity_data, updated_at: new Date().toISOString() }).eq('id', match.id).select('id,prospect_id,opportunity_type,opportunity_score,status,opportunity_data').single()
+        const { data: updated, error } = await supabase.from('prospect_opportunities').update({ workspace_id: workspaceId, problem: candidate.problem, business_impact: candidate.business_impact, opportunity_score: candidate.opportunity_score, opportunity_data: candidate.opportunity_data, updated_at: new Date().toISOString() }).eq('id', match.id).select('id,prospect_id,opportunity_type,opportunity_score,status,opportunity_data').single()
         if (error) throw error
-        created.push({ ...updated, action: 'updated' })
-        continue
+        created.push({ ...updated, action: 'updated' }); continue
       }
-      const { data: inserted, error } = await supabase.from('prospect_opportunities').insert({ prospect_id: prospectId, opportunity_type: candidate.opportunity_type, problem: candidate.problem, business_impact: candidate.business_impact, evidence_id: candidate.opportunity_data.evidence_id, opportunity_score: candidate.opportunity_score, status: candidate.status, opportunity_data: candidate.opportunity_data }).select('id,prospect_id,opportunity_type,opportunity_score,status,opportunity_data').single()
+      const { data: inserted, error } = await supabase.from('prospect_opportunities').insert({ workspace_id: workspaceId, prospect_id: prospectId, opportunity_type: candidate.opportunity_type, problem: candidate.problem, business_impact: candidate.business_impact, evidence_id: candidate.opportunity_data.evidence_id, opportunity_score: candidate.opportunity_score, status: candidate.status, opportunity_data: candidate.opportunity_data }).select('id,prospect_id,opportunity_type,opportunity_score,status,opportunity_data').single()
       if (error) throw error
       created.push({ ...inserted, action: 'created' })
     }
     const topScore = created.reduce((max, row) => Math.max(max, Number(row.opportunity_score ?? 0)), 0)
     await supabase.from('prospect_profiles').update({ opportunity_score: topScore || profile.opportunity_score || 0, updated_at: new Date().toISOString() }).eq('id', prospectId)
-    await supabase.from('audit_logs').insert({ action: 'opportunity_engine_run', entity_type: 'prospect_profile', entity_id: prospectId, actor: 'AI Core', details: { engine: 'opportunity-v1', signals_considered: activeSignals.length, evidence_backed_candidates: candidates.size, created_or_updated: created.length, top_opportunity_score: topScore, synthetic_data_created: false } })
+    await supabase.from('audit_logs').insert({ workspace_id: workspaceId, action: 'opportunity_engine_run', entity_type: 'prospect_profile', entity_id: prospectId, actor: 'AI Core', details: { engine: 'opportunity-v1', signals_considered: activeSignals.length, evidence_backed_candidates: candidates.size, created_or_updated: created.length, top_opportunity_score: topScore, synthetic_data_created: false } })
     return json({ ok: true, prospect_id: prospectId, created: created.length, opportunities: created, note: 'Opportunities are evidence-backed recommendations, not proof of purchase intent. External actions require human approval.' })
   } catch (error) {
+    if (error instanceof Response) return error
     return json({ ok: false, error: error instanceof Error ? error.message : 'Unknown error' }, 500)
   }
 })
