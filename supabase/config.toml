@@ -1,0 +1,7 @@
+project_id = "za-media-ai-growth-engine"
+
+[functions.ai-qualify]
+verify_jwt = true
+
+[functions.ai-audit]
+verify_jwt = true
