@@ -26,6 +26,13 @@ create table if not exists public.ai_audits (
 
 alter table public.ai_audits enable row level security;
 
+-- Idempotent policies so the migration can be safely replayed in environments
+-- where the table/policies may already exist.
+drop policy if exists "anon can read ai audits" on public.ai_audits;
+drop policy if exists "anon can insert ai audits" on public.ai_audits;
+drop policy if exists "authenticated can read ai audits" on public.ai_audits;
+drop policy if exists "authenticated can insert ai audits" on public.ai_audits;
+
 create policy "anon can read ai audits"
   on public.ai_audits for select to anon using (true);
 create policy "anon can insert ai audits"
