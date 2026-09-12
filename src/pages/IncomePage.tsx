@@ -4,7 +4,7 @@ import { supabase, supabaseConfigured } from '../lib/supabase'
 import type { IncomeRecord } from '../types/database'
 import { Modal } from '../components/Modal'
 
-const emptyForm = { amount: '', type: 'project', status: 'pending', description: '' }
+const emptyForm = { client_name: '', amount: '', category: 'Service', payment_method: 'Bank Transfer', status: 'paid' }
 
 export function IncomePage() {
   const [records, setRecords] = useState<IncomeRecord[]>([])
@@ -16,19 +16,33 @@ export function IncomePage() {
 
   const load = async () => {
     setLoading(true); setError('')
-    const { data, error: loadError } = await supabase.from('income_records').select('*, companies(name)').order('recorded_at', { ascending: false })
-    if (loadError) setError(loadError.error?.message ?? loadError.message)
+    const { data, error: loadError } = await supabase.from('income_records').select('*').order('transaction_date', { ascending: false })
+    if (loadError) setError(loadError.message)
     setRecords((data as IncomeRecord[]) ?? [])
     setLoading(false)
   }
+
   useEffect(() => { void load() }, [])
 
   const createRecord = async (e: FormEvent) => {
     e.preventDefault(); setSaving(true); setError('')
-    const payload = { ...form, amount: Number(form.amount) || 0 }
+    const payload = { client_name: form.client_name.trim(), amount: Number(form.amount), category: form.category, payment_method: form.payment_method, status: form.status }
+    if (!payload.client_name || !Number.isFinite(payload.amount) || payload.amount <= 0) {
+      setError('Client name and a positive amount are required.')
+      setSaving(false)
+      return
+    }
     const { data, error: saveError } = await supabase.from('income_records').insert(payload).select().maybeSingle()
     if (saveError) { setError(saveError.message); setSaving(false); return }
-    if (supabaseConfigured) await supabase.from('audit_logs').insert({ action: 'income_created', entity_type: 'income_record', actor: 'dashboard', details: { id: (data as IncomeRecord | null)?.id ?? 'unknown', amount: payload.amount } })
+    if (supabaseConfigured) {
+      await supabase.from('audit_logs').insert({
+        action: 'income.created',
+        entity_type: 'income_record',
+        entity_id: (data as IncomeRecord | null)?.id ?? null,
+        actor: 'dashboard',
+        details: { amount: payload.amount, category: payload.category, client_name: payload.client_name },
+      })
+    }
     setForm(emptyForm); setShowModal(false); await load(); setSaving(false)
   }
 
@@ -45,17 +59,17 @@ export function IncomePage() {
     </div>
     <div className="card overflow-hidden">
       <div className="border-b border-neutral-200 p-5"><h2 className="text-lg">Revenue records</h2></div>
-      <div className="overflow-x-auto"><table className="w-full min-w-[680px] text-left text-sm">
-        <thead className="bg-neutral-50 text-xs uppercase tracking-wider text-neutral-500"><tr><th className="px-5 py-3">Description</th><th className="px-5 py-3">Client</th><th className="px-5 py-3">Type</th><th className="px-5 py-3">Amount</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Date</th></tr></thead>
+      <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm">
+        <thead className="bg-neutral-50 text-xs uppercase tracking-wider text-neutral-500"><tr><th className="px-5 py-3">Client</th><th className="px-5 py-3">Category</th><th className="px-5 py-3">Payment method</th><th className="px-5 py-3">Amount</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Date</th></tr></thead>
         <tbody className="divide-y divide-neutral-100">
           {loading ? <tr><td colSpan={6} className="px-5 py-10 text-center text-neutral-400">Loading...</td></tr>
           : records.map((record) => <tr key={record.id}>
-            <td className="px-5 py-4 font-medium text-neutral-700">{record.description || 'Revenue record'}</td>
-            <td className="px-5 py-4 text-neutral-600">{record.companies?.name || '—'}</td>
-            <td className="px-5 py-4 capitalize text-neutral-600">{record.type}</td>
+            <td className="px-5 py-4 font-medium text-neutral-700">{record.client_name}</td>
+            <td className="px-5 py-4 capitalize text-neutral-600">{record.category}</td>
+            <td className="px-5 py-4 text-neutral-600">{record.payment_method}</td>
             <td className="px-5 py-4 font-semibold">${Number(record.amount).toLocaleString()}</td>
             <td className="px-5 py-4"><span className={record.status === 'paid' ? 'badge-success' : record.status === 'overdue' ? 'badge-error' : 'badge-warning'}>{record.status}</span></td>
-            <td className="px-5 py-4 text-xs text-neutral-500">{new Date(record.recorded_at).toLocaleDateString()}</td>
+            <td className="px-5 py-4 text-xs text-neutral-500">{new Date(record.transaction_date).toLocaleDateString()}</td>
           </tr>)}
           {!loading && records.length === 0 && <tr><td colSpan={6} className="px-5 py-10 text-center text-neutral-400">No income records yet.</td></tr>}
         </tbody>
@@ -63,9 +77,10 @@ export function IncomePage() {
     </div>
     {showModal && <Modal title="Add income record" onClose={() => setShowModal(false)}>
       <form onSubmit={createRecord} className="space-y-4">
-        <div><label className="mb-1.5 block text-xs font-semibold text-neutral-600">Amount ($) *</label><input type="number" min="0" step="0.01" className="input" required value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })}/></div>
-        <div className="grid gap-4 sm:grid-cols-2"><div><label className="mb-1.5 block text-xs font-semibold text-neutral-600">Type</label><select className="input" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}><option>project</option><option>retainer</option><option>commission</option><option>refund</option></select></div><div><label className="mb-1.5 block text-xs font-semibold text-neutral-600">Status</label><select className="input" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}><option>pending</option><option>paid</option><option>overdue</option><option>cancelled</option></select></div></div>
-        <div><label className="mb-1.5 block text-xs font-semibold text-neutral-600">Description</label><input className="input" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}/></div>
+        <div><label className="mb-1.5 block text-xs font-semibold text-neutral-600">Client name *</label><input className="input" required value={form.client_name} onChange={(e) => setForm({ ...form, client_name: e.target.value })}/></div>
+        <div><label className="mb-1.5 block text-xs font-semibold text-neutral-600">Amount ($) *</label><input type="number" min="0.01" step="0.01" className="input" required value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })}/></div>
+        <div className="grid gap-4 sm:grid-cols-2"><div><label className="mb-1.5 block text-xs font-semibold text-neutral-600">Category</label><select className="input" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}><option>Service</option><option>Retainer</option><option>Project</option><option>Commission</option><option>Refund</option></select></div><div><label className="mb-1.5 block text-xs font-semibold text-neutral-600">Payment method</label><select className="input" value={form.payment_method} onChange={(e) => setForm({ ...form, payment_method: e.target.value })}><option>Bank Transfer</option><option>Cash</option><option>Card</option><option>Online Payment</option><option>Other</option></select></div></div>
+        <div><label className="mb-1.5 block text-xs font-semibold text-neutral-600">Status</label><select className="input" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}><option>paid</option><option>pending</option><option>overdue</option><option>cancelled</option></select></div>
         <div className="flex justify-end gap-3 pt-2"><button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Cancel</button><button className="btn-primary" disabled={saving}>{saving ? 'Saving...' : 'Add record'}</button></div>
       </form>
     </Modal>}
