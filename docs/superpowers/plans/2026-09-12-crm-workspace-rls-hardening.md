@@ -1,6 +1,6 @@
 # CRM Workspace RLS Hardening Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Make ZA Media CRM data genuinely workspace-scoped and remove the current public `ALL` RLS exposure without changing the P0 AI engines.
 
@@ -23,85 +23,33 @@
 
 ---
 
-### Task 1: Establish security regression checks
+### Task 1: Establish security regression checks — COMPLETE
+- [x] SQL regression assertions created in `supabase/tests/crm_workspace_rls.sql`.
+- [x] RED verified against the pre-hardening production state.
+- [x] GREEN verified after the production migrations.
 
-**Files:**
-- Create: `supabase/tests/crm_workspace_rls.sql`
+### Task 2: Add workspace boundary migration — COMPLETE
+- [x] Added and backfilled CRM `workspace_id` columns.
+- [x] Added membership-aware CRM RLS, grants, indexes, and consistency guards.
+- [x] Applied `20260912050000_crm_workspace_rls_hardening` to production.
 
-**Interfaces:**
-- Consumes: production table/function metadata.
-- Produces: deterministic SQL assertions that fail when CRM workspace columns, policies, or grants regress.
+### Task 3: Secure derivative and operational data — COMPLETE
+- [x] AI audit/qualification rows are workspace-scoped.
+- [x] Lead-derived automation/follow-up/pipeline/task rows are workspace-scoped.
+- [x] Audit logs are append-only for authenticated users.
+- [x] Workspace SECURITY DEFINER helpers were hardened; unused claim RPC execution was removed.
 
-- [ ] Step 1: Write SQL assertions for required `workspace_id` columns, RLS enabled, absence of `public`/`anon` table grants, and membership-aware policies.
-- [ ] Step 2: Run the assertions against the current production database and confirm they fail for the known public `ALL true` policies.
-- [ ] Step 3: Keep the assertions as the post-migration security regression suite.
+### Task 4: Align frontend contracts — COMPLETE
+- [x] CRM TypeScript models include `workspace_id`.
+- [x] Workspace bootstrap now uses the canonical `create_workspace_with_owner` RPC.
+- [x] Removed stale `social_pages` UI because that production table does not exist.
 
-### Task 2: Add workspace boundary migration
-
-**Files:**
-- Create: `supabase/migrations/20260912050000_crm_workspace_rls_hardening.sql`
-
-**Interfaces:**
-- Consumes: canonical workspace ID and existing company/contact/lead/income rows.
-- Produces: workspace-scoped CRM tables and policies.
-
-- [ ] Step 1: Add nullable `workspace_id` columns with FK to `workspaces`.
-- [ ] Step 2: Backfill existing rows to the canonical ZA Media workspace.
-- [ ] Step 3: Add indexes and FKs from contacts/leads to preserve workspace consistency.
-- [ ] Step 4: Add a SECURITY DEFINER helper that resolves the caller's unique workspace and rejects ambiguous/no-membership writes.
-- [ ] Step 5: Add insert triggers that fill missing `workspace_id` for authenticated dashboard inserts and reject cross-workspace writes.
-- [ ] Step 6: Replace public `ALL true` policies on CRM tables with authenticated membership-aware SELECT/INSERT/UPDATE/DELETE policies.
-- [ ] Step 7: Add consistency policies so contacts/leads must use their company's workspace.
-- [ ] Step 8: Revoke table access from `anon` and grant only the required authenticated table privileges.
-- [ ] Step 9: Apply migration to production.
-- [ ] Step 10: Run the security regression SQL and production CRUD acceptance checks.
-
-### Task 3: Secure derivative AI and audit data
-
-**Files:**
-- Modify: `supabase/migrations/20260912050000_crm_workspace_rls_hardening.sql`
-
-**Interfaces:**
-- Consumes: workspace-scoped CRM rows.
-- Produces: tenant-aware access for `ai_audits` and `ai_qualification_scores`; preserves service-role Edge Function writes.
-
-- [ ] Step 1: Add/backfill `workspace_id` where needed using `lead_id`/`company_id` relationships.
-- [ ] Step 2: Replace anonymous/global policies with authenticated workspace policies.
-- [ ] Step 3: Preserve server-side service-role operation for Edge Functions.
-- [ ] Step 4: Verify no cross-workspace read/write policy remains.
-
-### Task 4: Align frontend data contracts
-
-**Files:**
-- Modify: `src/types/database.ts`
-- Modify: `src/pages/CompaniesPage.tsx`
-- Modify: `src/pages/LeadsPage.tsx`
-- Modify: `src/pages/IncomePage.tsx`
-- Modify: `src/auth/workspace.ts`
-
-**Interfaces:**
-- Consumes: authenticated active workspace.
-- Produces: explicit workspace-aware client writes and reads while retaining current UI behavior.
-
-- [ ] Step 1: Add `workspace_id` to CRM TypeScript models.
-- [ ] Step 2: Resolve the active workspace once and include its ID in CRM writes.
-- [ ] Step 3: Scope CRM reads to the active workspace where useful for defense-in-depth.
-- [ ] Step 4: Keep the database as the authorization authority; client filters are not security controls.
-- [ ] Step 5: Run typecheck/build.
-
-### Task 5: Full regression and release verification
-
-**Files:**
-- Modify only if verification finds a concrete regression.
-
-**Interfaces:**
-- Consumes: hardened production DB + current `main` code.
-- Produces: release evidence and final GO/NO-GO.
-
-- [ ] Step 1: Verify all CRM tables have RLS enabled and no `public`/`anon` policies/grants.
-- [ ] Step 2: Verify SECURITY DEFINER helpers use fixed `search_path`, `auth.uid()`, and restricted execution.
-- [ ] Step 3: Verify existing Company → Contact → Lead and Income acceptance data remains intact.
-- [ ] Step 4: Verify lead status change and audit log persistence.
-- [ ] Step 5: Verify no client-side service-role secret references.
-- [ ] Step 6: Run CI typecheck/build on the final branch.
-- [ ] Step 7: Prepare final Arena independent verification prompt with exact migration/commit evidence.
+### Task 5: Release verification — COMPLETE / FINAL AUDIT HANDOFF
+- [x] No `anon` table grants remain in `public`.
+- [x] No `public`/`anon` RLS policies remain.
+- [x] CRM and derived operational policies are authenticated + workspace-aware.
+- [x] Existing CRM rows are fully assigned to ZA Media.
+- [x] Transactional Company → Contact → Lead + Income test passed and was rolled back.
+- [x] Service-role key references are confined to server-side Edge Functions in repository search.
+- [x] CI passed on the hardening branch before the final docs-only commit; the final commit contains only documentation changes.
+- [ ] Independent Arena verification remains the final external release gate.
