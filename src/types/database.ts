@@ -135,13 +135,11 @@ export interface Message { id: string; conversation_id: string; direction: 'inbo
 export interface AuditLog { id: string; action: string; entity_type: string; entity_id: string | null; actor: string; details: Record<string, unknown>; created_at: string; workspace_id?: string | null }
 export interface IncomeRecord {
   id: string
-  company_id: string | null
-  lead_id: string | null
+  client_name: string
   amount: number
-  type: 'project' | 'retainer' | 'commission' | 'refund'
+  category: string
+  payment_method: string
   status: 'pending' | 'paid' | 'overdue' | 'cancelled'
-  description: string | null
-  recorded_at: string
+  transaction_date: string
   created_at: string
-  companies?: { name: string } | null
 }
