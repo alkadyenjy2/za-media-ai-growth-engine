@@ -6,6 +6,7 @@ export type CampaignStatus = 'draft' | 'active' | 'paused' | 'completed'
 
 export interface Company {
   id: string
+  workspace_id: string
   name: string
   domain: string | null
   industry: string
@@ -18,6 +19,7 @@ export interface Company {
 
 export interface Contact {
   id: string
+  workspace_id: string
   company_id: string
   full_name: string
   email: string
@@ -28,20 +30,9 @@ export interface Contact {
   created_at: string
 }
 
-export interface SocialPage {
-  id: string
-  company_id: string
-  name: string
-  platform: string
-  handle: string | null
-  status: 'connected' | 'disconnected' | 'attention'
-  followers: number
-  created_at: string
-  companies?: { name: string } | null
-}
-
 export interface Lead {
   id: string
+  workspace_id: string
   company_id: string
   contact_id: string
   contact_name: string
@@ -76,6 +67,7 @@ export interface Lead {
 
 export interface AiAudit {
   id: string
+  workspace_id: string
   company_id: string | null
   lead_id: string | null
   audit_type: string
@@ -135,6 +127,7 @@ export interface Message { id: string; conversation_id: string; direction: 'inbo
 export interface AuditLog { id: string; action: string; entity_type: string; entity_id: string | null; actor: string; details: Record<string, unknown>; created_at: string; workspace_id?: string | null }
 export interface IncomeRecord {
   id: string
+  workspace_id: string
   client_name: string
   amount: number
   category: string
