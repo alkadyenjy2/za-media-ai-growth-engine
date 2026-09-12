@@ -26,8 +26,8 @@ const steps = [
   { num: '05', title: 'Measure', desc: 'Track revenue, pipeline, and performance in real time.' },
 ]
 
-export function LandingPage({ onEnterDashboard }: { onEnterDashboard: () => void }) {
-  const [showForm, setShowForm] = useState(false)
+export function LandingPage({ onEnterDashboard, initialOpen = false }: { onEnterDashboard: () => void; initialOpen?: boolean }) {
+  const [showForm, setShowForm] = useState(initialOpen)
   const [form, setForm] = useState({ full_name: '', email: '', phone: '', company: '' })
   const [submitted, setSubmitted] = useState(false)
   const [saving, setSaving] = useState(false)
