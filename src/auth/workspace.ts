@@ -1,8 +1,6 @@
 import type { User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 
-export const ZA_MEDIA_WORKSPACE_ID = '37996c28-d9f9-4e5c-895d-692b8a1f23e0'
-
 export type ActiveWorkspace = {
   id: string
   name: string
@@ -35,8 +33,9 @@ export async function resolveActiveWorkspace(user: User): Promise<ActiveWorkspac
 }
 
 export async function claimZaMediaWorkspace(): Promise<ActiveWorkspace> {
-  const { data, error } = await supabase.rpc('claim_unowned_workspace', {
-    target_workspace_id: ZA_MEDIA_WORKSPACE_ID,
+  const { data, error } = await supabase.rpc('create_workspace_with_owner', {
+    workspace_name: 'ZA Media',
+    workspace_slug: 'za-media',
   })
 
   if (error) throw new Error(error.message)
