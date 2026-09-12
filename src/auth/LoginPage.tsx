@@ -1,9 +1,8 @@
 import { FormEvent, useState } from 'react'
 import { useAuth } from './AuthProvider'
-import { claimZaMediaWorkspace, resolveActiveWorkspace } from './workspace'
 
 export function LoginPage() {
-  const { user, signIn, signUp } = useAuth()
+  const { signIn, signUp } = useAuth()
   const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -28,17 +27,6 @@ export function LoginPage() {
     if (mode === 'sign-up') {
       setMessage('Account created. If email confirmation is enabled, confirm your email, then sign in.')
       setMode('sign-in')
-      setSaving(false)
-      return
-    }
-
-    if (user) {
-      try {
-        const workspace = await resolveActiveWorkspace(user)
-        if (!workspace) await claimZaMediaWorkspace()
-      } catch (error) {
-        setMessage(error instanceof Error ? error.message : 'Workspace activation failed.')
-      }
     }
 
     setSaving(false)
