@@ -133,4 +133,15 @@ export interface Campaign { id: string; company_id: string | null; page_id: stri
 export interface Conversation { id: string; lead_id: string; page_id: string | null; channel: string; status: 'open' | 'waiting' | 'closed'; last_message_at: string; created_at: string; leads?: { contact_name: string; phone: string; status: LeadStatus } | null }
 export interface Message { id: string; conversation_id: string; direction: 'inbound' | 'outbound'; sender_name: string; body: string; ai_generated: boolean; created_at: string }
 export interface AuditLog { id: string; action: string; entity_type: string; entity_id: string | null; actor: string; details: Record<string, unknown>; created_at: string; workspace_id?: string | null }
-export interface IncomeRecord { id: string; client_name: string; amount: number; category: string; payment_method: string; status: string; transaction_date: string; created_at: string }
+export interface IncomeRecord {
+  id: string
+  company_id: string | null
+  lead_id: string | null
+  amount: number
+  type: 'project' | 'retainer' | 'commission' | 'refund'
+  status: 'pending' | 'paid' | 'overdue' | 'cancelled'
+  description: string | null
+  recorded_at: string
+  created_at: string
+  companies?: { name: string } | null
+}
