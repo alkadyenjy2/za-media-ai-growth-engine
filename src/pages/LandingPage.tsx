@@ -45,15 +45,15 @@ export function LandingPage({ onEnterDashboard }: { onEnterDashboard: () => void
   }
 
   return <div className="min-h-screen bg-neutral-950 text-white">
-    <nav className="fixed top-0 z-50 w-full border-b border-white/10 bg-neutral-950/80 backdrop-blur-xl"><div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-8"><div className="flex items-center gap-2.5"><div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-500 font-display text-base font-bold">Z</div><span className="font-display text-lg font-bold tracking-wide">ZA Media</span></div><div className="hidden items-center gap-8 md:flex"><a href="#problem" className="text-sm text-neutral-400 hover:text-white transition-colors">Problem</a><a href="#solution" className="text-sm text-neutral-400 hover:text-white transition-colors">Solution</a><a href="#services" className="text-sm text-neutral-400 hover:text-white transition-colors">Services</a><a href="#how" className="text-sm text-neutral-400 hover:text-white transition-colors">How it works</a></div><button onClick={onEnterDashboard} className="btn bg-white/10 text-white hover:bg-white/20">Dashboard <ArrowRight size={15}/></button></div></nav>
+    <nav className="fixed top-0 z-50 w-full border-b border-white/10 bg-neutral-950/80 backdrop-blur-xl"><div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-8"><div className="flex items-center gap-3"><img src="/brand/za-media.svg" alt="ZA Media" className="h-9 w-9 rounded-xl"/><div><span className="block font-display text-lg font-bold tracking-wide">ZA Media</span><span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">Growth Intelligence</span></div></div><div className="hidden items-center gap-8 md:flex"><a href="#problem" className="text-sm text-neutral-400 hover:text-white transition-colors">Problem</a><a href="#solution" className="text-sm text-neutral-400 hover:text-white transition-colors">Solution</a><a href="#services" className="text-sm text-neutral-400 hover:text-white transition-colors">Services</a><a href="#how" className="text-sm text-neutral-400 hover:text-white transition-colors">How it works</a></div><button onClick={onEnterDashboard} className="btn bg-white/10 text-white hover:bg-white/20">Dashboard <ArrowRight size={15}/></button></div></nav>
 
     <section className="relative overflow-hidden pt-32 pb-20">
-      <div className="absolute inset-0 bg-gradient-to-br from-primary-600/20 via-transparent to-accent-600/10"/>
+      <div className="absolute inset-0 bg-gradient-to-br from-primary-600/20 via-transparent to-accent-500/10"/>
       <div className="absolute -top-40 right-0 h-96 w-96 rounded-full bg-primary-600/20 blur-3xl"/>
-      <div className="absolute -bottom-40 left-0 h-96 w-96 rounded-full bg-accent-600/15 blur-3xl"/>
+      <div className="absolute -bottom-40 left-0 h-96 w-96 rounded-full bg-accent-500/15 blur-3xl"/>
       <div className="relative mx-auto max-w-4xl px-4 text-center sm:px-8">
         <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm text-neutral-300"><Sparkles size={15} className="text-primary-400"/> AI-powered growth systems</div>
-        <h1 className="font-display text-4xl font-bold leading-tight tracking-tight sm:text-6xl">Turn leads into revenue<br/>with <span className="bg-gradient-to-r from-primary-400 to-accent-400 bg-clip-text text-transparent">AI-driven growth</span> automation</h1>
+        <h1 className="font-display text-4xl font-bold leading-tight tracking-tight sm:text-6xl">Turn leads into revenue<br/>with <span className="bg-gradient-to-r from-primary-400 via-primary-500 to-accent-400 bg-clip-text text-transparent">AI-driven growth</span> automation</h1>
         <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-neutral-400">ZA Media helps businesses generate, manage, and convert more opportunities — combining AI, marketing automation, and operations into one growth engine.</p>
         <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row"><button onClick={() => setShowForm(true)} className="btn-primary text-base">Get your AI growth audit <ArrowRight size={18}/></button><button onClick={onEnterDashboard} className="btn bg-white/10 text-white hover:bg-white/20 text-base">View dashboard</button></div>
       </div>
@@ -69,7 +69,7 @@ export function LandingPage({ onEnterDashboard }: { onEnterDashboard: () => void
     <section id="solution" className="border-t border-white/10 bg-gradient-to-b from-neutral-950 to-neutral-900 py-20">
       <div className="mx-auto max-w-7xl px-4 sm:px-8">
         <div className="mb-12 text-center"><h2 className="font-display text-3xl font-bold sm:text-4xl">One system. <span className="text-primary-400">Total growth.</span></h2><p className="mt-3 text-neutral-400">AI + Marketing + Automation + Operations + Analytics in a single platform.</p></div>
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{services.map(({ icon: Icon, title, desc }) => <div key={title} className="group rounded-2xl border border-white/10 bg-white/5 p-6 transition-all hover:border-primary-500/30 hover:bg-white/[0.07]"><div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-primary-500/15 text-primary-400 transition-colors group-hover:bg-primary-500/25"><Icon size={20}/></div><h3 className="font-semibold">{title}</h3><p className="mt-2 text-sm leading-6 text-neutral-400">{desc}</p></div>)}</div>
+        <div id="services" className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{services.map(({ icon: Icon, title, desc }) => <div key={title} className="group rounded-2xl border border-white/10 bg-white/5 p-6 transition-all hover:border-primary-500/30 hover:bg-white/[0.07]"><div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-primary-500/15 text-primary-400 transition-colors group-hover:bg-primary-500/25"><Icon size={20}/></div><h3 className="font-semibold">{title}</h3><p className="mt-2 text-sm leading-6 text-neutral-400">{desc}</p></div>)}</div>
       </div>
     </section>
 
@@ -88,7 +88,7 @@ export function LandingPage({ onEnterDashboard }: { onEnterDashboard: () => void
       </div>
     </section>
 
-    <footer className="border-t border-white/10 py-8"><div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-4 sm:flex-row sm:px-8"><div className="flex items-center gap-2.5"><div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary-500 font-display text-sm font-bold">Z</div><span className="font-display font-bold">ZA Media</span></div><p className="text-sm text-neutral-500">AI Growth Engine — Built for revenue.</p></div></footer>
+    <footer className="border-t border-white/10 py-8"><div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-4 sm:flex-row sm:px-8"><div className="flex items-center gap-3"><img src="/brand/za-media.svg" alt="ZA Media" className="h-8 w-8 rounded-lg"/><div><span className="block font-display font-bold">ZA Media</span><span className="block text-[10px] uppercase tracking-[0.16em] text-neutral-500">Growth Intelligence</span></div></div><p className="text-sm text-neutral-500">AI Growth Engine — Built for revenue.</p></div></footer>
 
     {showForm && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/60 p-4 backdrop-blur-sm" onMouseDown={() => setShowForm(false)}>
