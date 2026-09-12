@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { requireProspectWorkspaceAccess } from '../_shared/workspace-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -46,146 +47,39 @@ function freshnessFactor(observedAt: string | null | undefined) {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders }) }
   if (req.method !== 'POST') return json({ ok: false, error: 'Method not allowed' }, 405)
-
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    const supabaseUrl = Deno.env.get('SUPABASE_URL'); const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
     if (!supabaseUrl || !serviceRoleKey) throw new Error('Supabase server configuration is missing')
-
-    const input = await req.json()
-    const prospectId = String(input.prospect_id ?? '').trim()
+    const input = await req.json(); const prospectId = String(input.prospect_id ?? '').trim()
     if (!prospectId) throw new Error('prospect_id is required')
-
     const supabase = createClient(supabaseUrl, serviceRoleKey)
-    const { data: profile, error: profileError } = await supabase
-      .from('prospect_profiles')
-      .select('id,canonical_name')
-      .eq('id', prospectId)
-      .single()
+    const { workspaceId } = await requireProspectWorkspaceAccess(req, supabase, prospectId)
+    const { data: profile, error: profileError } = await supabase.from('prospect_profiles').select('id,canonical_name').eq('id', prospectId).eq('workspace_id', workspaceId).single()
     if (profileError) throw profileError
-
-    const { data: evidenceRows, error: evidenceError } = await supabase
-      .from('prospect_evidence')
-      .select('*')
-      .eq('prospect_id', prospectId)
-      .eq('evidence_status', 'active')
-      .order('observed_at', { ascending: false })
-      .limit(500)
+    const { data: evidenceRows, error: evidenceError } = await supabase.from('prospect_evidence').select('*').eq('prospect_id', prospectId).eq('workspace_id', workspaceId).eq('evidence_status', 'active').order('observed_at', { ascending: false }).limit(500)
     if (evidenceError) throw evidenceError
-
-    const evidence = evidenceRows ?? []
-    const activeSignals = evidence.filter((row) => !row.expires_at || new Date(row.expires_at).getTime() > Date.now())
-    const candidates: any[] = []
-
+    const evidence = evidenceRows ?? []; const activeSignals = evidence.filter((row) => !row.expires_at || new Date(row.expires_at).getTime() > Date.now()); const candidates: any[] = []
     for (const row of activeSignals) {
-      const rule = detectRule(row)
-      if (!rule) continue
-
-      const confidence = clamp(Number(row.confidence ?? 0.6) * 100)
-      const freshness = freshnessFactor(row.observed_at)
-      let strength = clamp(rule.base * (0.55 + confidence / 200) * freshness)
-      let changeDetected = false
-
-      // Website/content evidence can become a signal only when a new observation differs
-      // from the previous observation for the same evidence key. This prevents ordinary
-      // re-crawls from becoming fake intent.
+      const rule = detectRule(row); if (!rule) continue
+      const confidence = clamp(Number(row.confidence ?? 0.6) * 100); const freshness = freshnessFactor(row.observed_at); let strength = clamp(rule.base * (0.55 + confidence / 200) * freshness); let changeDetected = false
       if (rule.type === 'website_change' || rule.type === 'content_change') {
-        const key = row.evidence_key
-        if (!key) continue
-        const previous = evidence.find((candidate) =>
-          candidate.id !== row.id &&
-          candidate.evidence_key === key &&
-          new Date(candidate.observed_at).getTime() < new Date(row.observed_at).getTime(),
-        )
+        const key = row.evidence_key; if (!key) continue
+        const previous = evidence.find((candidate) => candidate.id !== row.id && candidate.evidence_key === key && new Date(candidate.observed_at).getTime() < new Date(row.observed_at).getTime())
         if (!previous) continue
-        const currentHash = row.content_hash ?? null
-        const previousHash = previous.content_hash ?? null
-        if (currentHash && previousHash) changeDetected = currentHash !== previousHash
-        else changeDetected = JSON.stringify(row.evidence_data ?? {}) !== JSON.stringify(previous.evidence_data ?? {})
-        if (!changeDetected) continue
-        strength = clamp(strength + 12)
+        const currentHash = row.content_hash ?? null; const previousHash = previous.content_hash ?? null
+        if (currentHash && previousHash) changeDetected = currentHash !== previousHash; else changeDetected = JSON.stringify(row.evidence_data ?? {}) !== JSON.stringify(previous.evidence_data ?? {})
+        if (!changeDetected) continue; strength = clamp(strength + 12)
       }
-
-      const normalizedClaim = text(row.claim).replace(/\s+/g, ' ').slice(0, 220)
-      const rootEventKey = `${rule.type}:${row.evidence_key ?? row.id}:${row.content_hash ?? normalizedClaim}`
-      candidates.push({
-        prospect_id: prospectId,
-        signal_type: rule.type,
-        strength,
-        evidence_id: row.id,
-        expires_at: new Date(Date.now() + rule.ttl * 86400000).toISOString(),
-        signal_data: {
-          subtype: rule.subtype,
-          root_event_key: rootEventKey,
-          evidence_ids: [row.id],
-          source_type: row.source_type,
-          source_name: row.source_name,
-          confidence: Number(row.confidence ?? 0.6),
-          freshness_factor: Number(freshness.toFixed(3)),
-          change_detected: changeDetected,
-          generated_by: 'intent-engine/deterministic-v1',
-        },
-        detected_at: row.observed_at ?? now().toISOString(),
-      })
+      const normalizedClaim = text(row.claim).replace(/\s+/g, ' ').slice(0, 220); const rootEventKey = `${rule.type}:${row.evidence_key ?? row.id}:${row.content_hash ?? normalizedClaim}`
+      candidates.push({ prospect_id: prospectId, workspace_id: workspaceId, signal_type: rule.type, strength, evidence_id: row.id, expires_at: new Date(Date.now() + rule.ttl * 86400000).toISOString(), signal_data: { subtype: rule.subtype, root_event_key: rootEventKey, evidence_ids: [row.id], source_type: row.source_type, source_name: row.source_name, confidence: Number(row.confidence ?? 0.6), freshness_factor: Number(freshness.toFixed(3)), change_detected: changeDetected, generated_by: 'intent-engine/deterministic-v1' }, detected_at: row.observed_at ?? now().toISOString() })
     }
-
-    // Dedupe by root event before touching the database.
-    const unique = new Map<string, any>()
-    for (const candidate of candidates) {
-      const key = candidate.signal_data.root_event_key
-      if (!unique.has(key) || candidate.strength > unique.get(key).strength) unique.set(key, candidate)
-    }
-
-    const keys = [...unique.keys()]
-    const existing: any[] = []
-    if (keys.length) {
-      const { data, error } = await supabase
-        .from('prospect_intent_signals')
-        .select('id,signal_data')
-        .eq('prospect_id', prospectId)
-      if (error) throw error
-      existing.push(...(data ?? []))
-    }
-    const existingKeys = new Set(existing.map((row) => row.signal_data?.root_event_key).filter(Boolean))
-    const toInsert = [...unique.values()].filter((row) => !existingKeys.has(row.signal_data.root_event_key))
-
-    let inserted: any[] = []
-    if (toInsert.length) {
-      const { data, error } = await supabase.from('prospect_intent_signals').insert(toInsert).select()
-      if (error) throw error
-      inserted = data ?? []
-    }
-
-    await supabase.from('audit_logs').insert({
-      action: 'intent_engine_run',
-      entity_type: 'prospect_profile',
-      entity_id: prospectId,
-      actor: 'AI Core',
-      details: {
-        prospect: profile.canonical_name,
-        evidence_considered: activeSignals.length,
-        candidates: candidates.length,
-        unique_events: unique.size,
-        inserted: inserted.length,
-        skipped_duplicates: unique.size - toInsert.length,
-        engine: 'deterministic-v1',
-      },
-    })
-
-    return json({
-      ok: true,
-      prospect_id: prospectId,
-      evidence_considered: activeSignals.length,
-      candidates: candidates.length,
-      unique_events: unique.size,
-      inserted: inserted.length,
-      skipped_duplicates: unique.size - toInsert.length,
-      signals: inserted,
-      note: 'Signals are evidence-backed and deduplicated by root_event_key. No synthetic prospect data is created.',
-    })
-  } catch (error) {
-    return json({ ok: false, error: error instanceof Error ? error.message : 'Unknown error' }, 500)
-  }
+    const unique = new Map<string, any>(); for (const candidate of candidates) { const key = candidate.signal_data.root_event_key; if (!unique.has(key) || candidate.strength > unique.get(key).strength) unique.set(key, candidate) }
+    const existing: any[] = []; if (unique.size) { const { data, error } = await supabase.from('prospect_intent_signals').select('id,signal_data').eq('prospect_id', prospectId).eq('workspace_id', workspaceId); if (error) throw error; existing.push(...(data ?? [])) }
+    const existingKeys = new Set(existing.map((row) => row.signal_data?.root_event_key).filter(Boolean)); const toInsert = [...unique.values()].filter((row) => !existingKeys.has(row.signal_data.root_event_key)); let inserted: any[] = []
+    if (toInsert.length) { const { data, error } = await supabase.from('prospect_intent_signals').insert(toInsert).select(); if (error) throw error; inserted = data ?? [] }
+    await supabase.from('audit_logs').insert({ action: 'intent_engine_run', entity_type: 'prospect_profile', entity_id: prospectId, actor: 'AI Core', details: { workspace_id: workspaceId, prospect: profile.canonical_name, evidence_considered: activeSignals.length, candidates: candidates.length, unique_events: unique.size, inserted: inserted.length, skipped_duplicates: unique.size - toInsert.length, engine: 'deterministic-v1' } })
+    return json({ ok: true, prospect_id: prospectId, evidence_considered: activeSignals.length, candidates: candidates.length, unique_events: unique.size, inserted: inserted.length, skipped_duplicates: unique.size - toInsert.length, signals: inserted, note: 'Signals are evidence-backed and deduplicated by root_event_key. No synthetic prospect data is created.' })
+  } catch (error) { if (error instanceof Response) return error; return json({ ok: false, error: error instanceof Error ? error.message : 'Unknown error' }, 500) }
 })
