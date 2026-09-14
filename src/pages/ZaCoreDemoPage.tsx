@@ -28,6 +28,7 @@ export function ZaCoreDemoPage({ onBack }: { onBack: () => void }) {
   }
 
   const resetDemo = () => {
+    formStarted.current = false
     setMode('demo')
     setForm(emptyForm)
     setResult(null)
