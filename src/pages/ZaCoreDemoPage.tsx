@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ArrowRight, Sparkles } from '../lib/icons'
 import { supabase } from '../lib/supabase'
 import { qualifyDemoLead, type DemoQualification } from '../lib/demoQualification'
+import { trackZaEvent } from '../lib/analytics'
 
 const emptyForm = { full_name: '', email: '', primary_goal: '', phone: '', company: '' }
 
@@ -12,6 +13,19 @@ export function ZaCoreDemoPage({ onBack }: { onBack: () => void }) {
   const [liveSubmitted, setLiveSubmitted] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const formStarted = useRef(false)
+
+  useEffect(() => {
+    trackZaEvent('demo_open')
+  }, [])
+
+  const updateField = (field: keyof typeof emptyForm, value: string) => {
+    if (!formStarted.current) {
+      formStarted.current = true
+      trackZaEvent('form_started')
+    }
+    setForm(current => ({ ...current, [field]: value }))
+  }
 
   const resetDemo = () => {
     setMode('demo')
@@ -28,6 +42,8 @@ export function ZaCoreDemoPage({ onBack }: { onBack: () => void }) {
     setError('')
     if (mode === 'demo') {
       setResult(qualifyDemoLead(form))
+      trackZaEvent('form_submitted')
+      trackZaEvent('demo_step_completed')
       setSaving(false)
       return
     }
@@ -53,6 +69,7 @@ export function ZaCoreDemoPage({ onBack }: { onBack: () => void }) {
       details: { source: 'core_demo', name: form.full_name, company: form.company, primary_goal: form.primary_goal, requested_service: 'Marketing Strategy & Planning', mode: 'live' },
     })
     setLiveSubmitted(true)
+    trackZaEvent('form_submitted')
     setSaving(false)
   }
 
@@ -78,12 +95,12 @@ export function ZaCoreDemoPage({ onBack }: { onBack: () => void }) {
           </div>
           <p className="mb-6 text-xs leading-5 text-neutral-500">{mode === 'demo' ? 'Clearly labeled demo data. No real lead, message, booking, payment, or external action is created.' : 'Saves a real Lead. No external action is triggered automatically.'}</p>
           <form onSubmit={submit} className="space-y-4">
-            <input className="input bg-white/5 border-white/10 text-white" required placeholder="Full name *" value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })}/>
-            <input type="email" className="input bg-white/5 border-white/10 text-white" required placeholder="Email *" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}/>
-            <input className="input bg-white/5 border-white/10 text-white" required placeholder="Primary growth goal *" value={form.primary_goal} onChange={e => setForm({ ...form, primary_goal: e.target.value })}/>
+            <input className="input bg-white/5 border-white/10 text-white" required placeholder="Full name *" value={form.full_name} onChange={e => updateField('full_name', e.target.value)}/>
+            <input type="email" className="input bg-white/5 border-white/10 text-white" required placeholder="Email *" value={form.email} onChange={e => updateField('email', e.target.value)}/>
+            <input className="input bg-white/5 border-white/10 text-white" required placeholder="Primary growth goal *" value={form.primary_goal} onChange={e => updateField('primary_goal', e.target.value)}/>
             <div className="grid gap-4 sm:grid-cols-2">
-              <input className="input bg-white/5 border-white/10 text-white" placeholder="Phone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })}/>
-              <input className="input bg-white/5 border-white/10 text-white" placeholder="Company name" value={form.company} onChange={e => setForm({ ...form, company: e.target.value })}/>
+              <input className="input bg-white/5 border-white/10 text-white" placeholder="Phone" value={form.phone} onChange={e => updateField('phone', e.target.value)}/>
+              <input className="input bg-white/5 border-white/10 text-white" placeholder="Company name" value={form.company} onChange={e => updateField('company', e.target.value)}/>
             </div>
             {error && <p className="text-sm text-error-400">{error}</p>}
             <button className="btn-primary w-full" disabled={saving}>{saving ? 'Processing…' : mode === 'demo' ? 'Run demo qualification' : 'Submit live request'} <ArrowRight size={17}/></button>
