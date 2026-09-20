@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
     if (!prospectId) throw new Error('prospect_id is required')
 
     const supabase = createClient(url, serviceKey)
-    const { workspaceId } = await requireProspectWorkspaceAccess(req, supabase, prospectId)
+    await requireProspectWorkspaceAccess(req, supabase, prospectId)
 
     let opportunityQuery = supabase
       .from('prospect_opportunities')
@@ -65,7 +65,6 @@ Deno.serve(async (req) => {
 
     const { data: opportunities, error: opportunityError } = await opportunityQuery
     if (opportunityError) throw opportunityError
-    // Workspace authorization above gates all prospect-linked reads/writes; service-role access does not bypass it.
     if (!opportunities?.length) {
       return json({ ok: true, prospect_id: prospectId, matched: 0, matches: [], note: 'No eligible opportunities found.' })
     }
