@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { requireProspectWorkspaceAccess } from '../_shared/workspace-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -84,10 +85,12 @@ Deno.serve(async (req) => {
     const requestedOpportunityId = input.opportunity_id ?? null
 
     const supabase = createClient(supabaseUrl, serviceRoleKey)
+    const { workspaceId } = await requireProspectWorkspaceAccess(req, supabase, String(input.prospect_id))
     const { data: profile, error: profileError } = await supabase
       .from('prospect_profiles')
       .select('id,canonical_name,legal_name,website_url,domain,industry,sub_industry,country,city,description,fit_score,intent_score,opportunity_score,confidence_score,profile_data')
       .eq('id', input.prospect_id)
+      .eq('workspace_id', workspaceId)
       .single()
     if (profileError) throw profileError
 
@@ -183,6 +186,7 @@ ${JSON.stringify(evidence.map((e) => ({ id: e.id, type: e.evidence_type, claim: 
 
     return json({ ok: true, draft_event: event, draft, compliance, prospect_id: profile.id, opportunity_id: opportunity.id })
   } catch (error) {
+    if (error instanceof Response) return error
     return json({ ok: false, error: error instanceof Error ? error.message : 'Unknown error' }, 400)
   }
 })
