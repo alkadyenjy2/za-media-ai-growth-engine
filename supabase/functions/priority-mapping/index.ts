@@ -79,11 +79,15 @@ Deno.serve(async (req) => {
     if (hashes.length) {
       const { data: duplicates, error: duplicateError } = await supabase
         .from('prospect_evidence')
-        .select('content_hash')
+        .select('id,content_hash')
         .eq('workspace_id', workspaceId)
         .in('content_hash', [...new Set(hashes)])
       if (duplicateError) throw duplicateError
-      workspaceDuplicateHashes = [...new Set((duplicates ?? []).map((row) => row.content_hash).filter(Boolean))]
+      const activeEvidenceIds = new Set(activeEvidence.map((row) => row.id))
+      workspaceDuplicateHashes = [...new Set((duplicates ?? [])
+        .filter((row) => !activeEvidenceIds.has(row.id))
+        .map((row) => row.content_hash)
+        .filter(Boolean))]
     }
 
     const t = policy.thresholds ?? {}
@@ -145,8 +149,8 @@ Deno.serve(async (req) => {
     } else if (!researchReasons.length &&
       intent != null &&
       intent <= Number(p3.intent_max ?? 49) &&
-      signalCount >= 1 &&
-      evidenceCount >= 1 &&
+      (!p3.evidence_required || evidenceCount >= 1) &&
+      (!p3.intent_signals_required || signalCount >= 1) &&
       (!p3.active_opportunity_required || opportunityActive)
     ) {
       tier = 'P3'
@@ -191,7 +195,7 @@ Deno.serve(async (req) => {
       .single()
     if (saveError) throw saveError
 
-    await supabase.from('audit_logs').insert({
+    const { error: auditError } = await supabase.from('audit_logs').insert({
       workspace_id: workspaceId,
       action: 'priority_mapping_run',
       entity_type: 'prospect_priority_decision',
@@ -213,6 +217,7 @@ Deno.serve(async (req) => {
         external_action_performed: false,
       },
     })
+    if (auditError) throw auditError
 
     return json({
       ok: true,
