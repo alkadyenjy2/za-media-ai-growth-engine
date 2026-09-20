@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { requireProspectWorkspaceAccess } from '../_shared/workspace-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -50,6 +51,7 @@ Deno.serve(async (req) => {
     if (!prospectId) throw new Error('prospect_id is required')
 
     const supabase = createClient(url, serviceKey)
+    const { workspaceId } = await requireProspectWorkspaceAccess(req, supabase, prospectId)
 
     let opportunityQuery = supabase
       .from('prospect_opportunities')
@@ -63,6 +65,7 @@ Deno.serve(async (req) => {
 
     const { data: opportunities, error: opportunityError } = await opportunityQuery
     if (opportunityError) throw opportunityError
+    // Workspace authorization above gates all prospect-linked reads/writes; service-role access does not bypass it.
     if (!opportunities?.length) {
       return json({ ok: true, prospect_id: prospectId, matched: 0, matches: [], note: 'No eligible opportunities found.' })
     }
@@ -196,6 +199,7 @@ Deno.serve(async (req) => {
       note: 'Service matches are evidence-backed recommendations. No outreach or external action is performed.',
     })
   } catch (error) {
+    if (error instanceof Response) return error
     return json({ ok: false, error: error instanceof Error ? error.message : 'Unknown error' }, 500)
   }
 })
