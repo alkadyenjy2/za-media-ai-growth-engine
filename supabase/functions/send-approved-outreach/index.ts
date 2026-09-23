@@ -116,7 +116,6 @@ Deno.serve(async (req) => {
       .from('prospect_profiles')
       .select('id,canonical_name,workspace_id,profile_data')
       .eq('id', outreach.prospect_id)
-      .eq('workspace_id', workspaceId)
       .single()
     if (profileError) throw profileError
 
@@ -142,7 +141,6 @@ Deno.serve(async (req) => {
       .from('prospect_outreach_events')
       .update({ metadata: sendingMetadata })
       .eq('id', outreach.id)
-      .eq('workspace_id', workspaceId)
     if (markSendingError) throw markSendingError
 
     try {
