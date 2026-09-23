@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { requireUserWorkspace } from '../_shared/workspace-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -18,12 +19,16 @@ Deno.serve(async (req) => {
     if (!supabaseUrl || !serviceRoleKey) throw new Error('Supabase server configuration is missing')
 
     const supabase = createClient(supabaseUrl, serviceRoleKey)
+    const { workspaceId } = await requireUserWorkspace(req, supabase)
+    const userToken = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '')
+    if (!userToken) throw new Response(JSON.stringify({ ok: false, error: 'Authentication required' }), { status: 401, headers: { 'Content-Type': 'application/json' } })
     const input = await req.json().catch(() => ({}))
     const batchSize = Math.max(1, Math.min(Number(input.batch_size ?? 10), 25))
 
     const { data: due, error: dueError } = await supabase
       .from('prospect_profiles')
       .select('id,canonical_name,next_review_at')
+      .eq('workspace_id', workspaceId)
       .not('lifecycle_status', 'in', '(archived,disqualified)')
       .or(`next_review_at.is.null,next_review_at.lte.${new Date().toISOString()}`)
       .order('next_review_at', { ascending: true, nullsFirst: true })
@@ -32,7 +37,7 @@ Deno.serve(async (req) => {
 
     const results: any[] = []
     for (const prospect of due ?? []) {
-      const headers = { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' }
+      const headers = { Authorization: `Bearer ${userToken}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' }
       const intentResponse = await fetch(`${supabaseUrl}/functions/v1/intent-engine`, {
         method: 'POST', headers, body: JSON.stringify({ prospect_id: prospect.id }),
       })
@@ -58,6 +63,7 @@ Deno.serve(async (req) => {
     }
 
     await supabase.from('audit_logs').insert({
+      workspace_id: workspaceId,
       action: 'prospect_monitoring_cycle',
       entity_type: 'prospect_monitoring',
       actor: 'AI Core',
