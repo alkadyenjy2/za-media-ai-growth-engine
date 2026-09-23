@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { requireProspectWorkspaceAccess } from '../_shared/workspace-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -54,7 +55,8 @@ Deno.serve(async (req) => {
     if (!Array.isArray(input.profiles)) throw new Error('profiles must be an array')
 
     const supabase = createClient(supabaseUrl, serviceRoleKey)
-    const { data: profile, error: profileError } = await supabase.from('prospect_profiles').select('*').eq('id', input.prospect_id).single()
+    const { workspaceId } = await requireProspectWorkspaceAccess(req, supabase, String(input.prospect_id))
+    const { data: profile, error: profileError } = await supabase.from('prospect_profiles').select('*').eq('id', input.prospect_id).eq('workspace_id', workspaceId).single()
     if (profileError) throw profileError
 
     const now = new Date().toISOString()
@@ -73,6 +75,7 @@ Deno.serve(async (req) => {
     const metricsCount = deduped.filter((entry: any) => entry.metrics).length
 
     const evidenceRows = deduped.map((entry: any) => ({
+      workspace_id: workspaceId,
       prospect_id: profile.id,
       evidence_type: 'social',
       source_type: entry.connected ? 'first_party' : 'public',
@@ -91,6 +94,7 @@ Deno.serve(async (req) => {
     }))
 
     evidenceRows.push({
+      workspace_id: workspaceId,
       prospect_id: profile.id,
       evidence_type: 'social',
       source_type: 'derived',
@@ -123,9 +127,10 @@ Deno.serve(async (req) => {
       profile_data: { ...current, social_intelligence: socialIntelligence },
       last_observed_at: now,
       updated_at: now,
-    }).eq('id', profile.id)
+    }).eq('id', profile.id).eq('workspace_id', workspaceId)
 
     await supabase.from('audit_logs').insert({
+      workspace_id: workspaceId,
       action: 'social_intelligence',
       entity_type: 'prospect_profile',
       entity_id: profile.id,
