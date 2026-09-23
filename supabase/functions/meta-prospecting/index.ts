@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { requireUserWorkspace } from '../_shared/workspace-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -28,9 +29,10 @@ Deno.serve(async (req) => {
 
     const input = await req.json()
     const supabase = createClient(supabaseUrl, serviceRoleKey)
+    const { workspaceId } = await requireUserWorkspace(req, supabase)
 
     if (input.action === 'status') {
-      const { data, error } = await supabase.from('meta_connections').select('id,connection_type,display_name,status,meta_business_id,page_id,instagram_account_id,scopes,token_expires_at,last_sync_at,last_error,updated_at').order('updated_at', { ascending: false })
+      const { data, error } = await supabase.from('meta_connections').select('id,connection_type,display_name,status,meta_business_id,page_id,instagram_account_id,scopes,token_expires_at,last_sync_at,last_error,updated_at').eq('workspace_id', workspaceId).order('updated_at', { ascending: false })
       if (error) throw error
       return responseJson({ ok: true, connections: data ?? [] })
     }
@@ -41,6 +43,7 @@ Deno.serve(async (req) => {
       const displayName = String(input.display_name ?? '').trim()
       if (!displayName) throw new Error('display_name is required')
       const { data, error } = await supabase.from('meta_connections').insert({
+        workspace_id: workspaceId,
         connection_type: connectionType,
         display_name: displayName,
         status: 'pending',
@@ -52,14 +55,19 @@ Deno.serve(async (req) => {
         metadata: { authorization_required: true, policy: 'official Meta APIs/OAuth only' },
       }).select('id,connection_type,display_name,status,meta_business_id,page_id,instagram_account_id,scopes,token_secret_name').single()
       if (error) throw error
-      await supabase.from('audit_logs').insert({ action: 'meta_connection_registered', entity_type: 'meta_connection', entity_id: data.id, actor: 'AI Core', details: { connection_type: connectionType } })
+      await supabase.from('audit_logs').insert({ workspace_id: workspaceId, action: 'meta_connection_registered', entity_type: 'meta_connection', entity_id: data.id, actor: 'AI Core', details: { connection_type: connectionType } })
       return responseJson({ ok: true, connection: data, next: 'OAuth authorization is required before live Meta data can be fetched.' })
     }
 
     if (input.action === 'record_target') {
       if (!input.connection_id || !input.prospect_id) throw new Error('connection_id and prospect_id are required')
       const platform = normalizePlatform(input.platform)
+      const { data: prospect, error: prospectError } = await supabase.from('prospect_profiles').select('id').eq('id', input.prospect_id).eq('workspace_id', workspaceId).single()
+      if (prospectError) throw prospectError
+      const { data: connection, error: connectionError } = await supabase.from('meta_connections').select('id').eq('id', input.connection_id).eq('workspace_id', workspaceId).single()
+      if (connectionError) throw connectionError
       const { data, error } = await supabase.from('meta_prospect_targets').upsert({
+        workspace_id: workspaceId,
         connection_id: input.connection_id,
         prospect_id: input.prospect_id,
         platform,
