@@ -35,8 +35,8 @@ Deno.serve(async (req) => {
     if (draftError) throw draftError
     if (!draft) return json({ ok: false, reason: 'Outreach event not found' }, 404)
     if (draft.channel !== 'email') return json({ ok: false, reason: 'Only email dispatch is implemented for AgentMail', channel: draft.channel }, 409)
-    if (draft.event_type !== 'drafted' && draft.event_type !== 'approved') {
-      return json({ ok: false, reason: 'Outreach event is not approved for sending', event_type: draft.event_type }, 409)
+    if (draft.event_type !== 'approved') {
+      return json({ ok: false, reason: 'Outreach event must be explicitly approved before sending', event_type: draft.event_type }, 409)
     }
 
     const { workspaceId } = await requireProspectWorkspaceAccess(req, supabase, String(draft.prospect_id))
