@@ -1,5 +1,21 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { requireProspectWorkspaceAccess } from '../_shared/workspace-auth.ts'
+
+function unauthorized(message: string) {
+  return new Response(JSON.stringify({ ok: false, error: message }), { status: 401, headers: { 'Content-Type': 'application/json' } })
+}
+async function requireProspectWorkspaceAccess(req: Request, supabase: ReturnType<typeof createClient>, prospectId: string) {
+  const token = req.headers.get('Authorization')?.replace(/^Bearer\\s+/i, '')
+  if (!token) throw unauthorized('Authentication required')
+  const { data: authData, error: authError } = await supabase.auth.getUser(token)
+  if (authError || !authData.user) throw unauthorized('Authentication required')
+  const { data: profile, error: profileError } = await supabase.from('prospect_profiles').select('workspace_id').eq('id', prospectId).maybeSingle()
+  if (profileError) throw profileError
+  if (!profile?.workspace_id) throw unauthorized('Unauthorized')
+  const { data: membership, error: membershipError } = await supabase.from('workspace_members').select('workspace_id').eq('workspace_id', profile.workspace_id).eq('user_id', authData.user.id).maybeSingle()
+  if (membershipError) throw membershipError
+  if (!membership) throw unauthorized('Unauthorized')
+  return { userId: authData.user.id, workspaceId: profile.workspace_id as string }
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -62,9 +78,22 @@ Deno.serve(async (req) => {
     if (profileError) throw profileError
 
     const profileData = (profile.profile_data ?? {}) as Record<string, unknown>
-    const recipient = String(profileData.contact_email ?? '').trim()
+    const recipient = String(profileData.contact_email ?? '').trim().toLowerCase()
     if (!recipient || !recipient.includes('@')) {
       return json({ ok: false, reason: 'Verified prospect contact_email is missing', send_performed: false }, 409)
+    }
+
+    const { data: suppressed, error: suppressionError } = await supabase
+      .rpc('is_outreach_suppressed', { target_workspace_id: workspaceId, target_email: recipient })
+    if (suppressionError) throw suppressionError
+    if (suppressed === true) {
+      await supabase.from('audit_logs').insert({
+        action: 'personalized_outreach_suppressed',
+        resource_type: 'prospect_outreach_events',
+        resource_id: draft.id,
+        metadata: { prospect_id: draft.prospect_id, opportunity_id: draft.opportunity_id, recipient, provider: 'agentmail' },
+      })
+      return json({ ok: false, reason: 'Recipient is suppressed; external send blocked', send_performed: false, suppressed: true }, 409)
     }
 
     const { data: existingSent } = await supabase
@@ -119,6 +148,7 @@ Deno.serve(async (req) => {
       .insert({
         prospect_id: draft.prospect_id,
         opportunity_id: draft.opportunity_id,
+        workspace_id: workspaceId,
         channel: 'email',
         event_type: 'sent',
         content: text,
@@ -147,6 +177,7 @@ Deno.serve(async (req) => {
         source_draft_event_id: draft.id,
         provider: 'agentmail',
         provider_message_id: provider?.message_id ?? null,
+        provider_thread_id: provider?.thread_id ?? null,
         recipient,
         send_performed: true,
       },
