@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { requireProspectWorkspaceAccess } from '../_shared/workspace-auth.ts'
 
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' }
 const jsonHeaders = { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -21,11 +22,12 @@ Deno.serve(async (req) => {
     if (!input.prospect_id) throw new Error('prospect_id is required')
 
     const supabase = createClient(supabaseUrl, serviceRoleKey)
-    const { data: profile, error: profileError } = await supabase.from('prospect_profiles').select('id,canonical_name,website_url,domain').eq('id', input.prospect_id).single()
+    const { workspaceId } = await requireProspectWorkspaceAccess(req, supabase, String(input.prospect_id))
+    const { data: profile, error: profileError } = await supabase.from('prospect_profiles').select('id,canonical_name,website_url,domain').eq('id', input.prospect_id).eq('workspace_id', workspaceId).single()
     if (profileError) throw profileError
     if (!profile.website_url) throw new Error('Prospect has no website_url')
 
-    const { data: evidence, error: evidenceError } = await supabase.from('prospect_evidence').select('id,evidence_key,evidence_type,source_url,claim,evidence_data,confidence,observed_at,evidence_status').eq('prospect_id', profile.id).in('evidence_type', ['website','seo','geo','social']).order('observed_at', { ascending: false }).limit(250)
+    const { data: evidence, error: evidenceError } = await supabase.from('prospect_evidence').select('id,evidence_key,evidence_type,source_url,claim,evidence_data,confidence,observed_at,evidence_status').eq('prospect_id', profile.id).eq('workspace_id', workspaceId).in('evidence_type', ['website','seo','geo','social']).order('observed_at', { ascending: false }).limit(250)
     if (evidenceError) throw evidenceError
     const rows = (evidence ?? []) as Evidence[]
     if (!rows.length) return json({ ok: false, measured: false, reason: 'No website intelligence evidence exists. Run website-intelligence first.', prospect_id: profile.id }, 409)
@@ -71,10 +73,10 @@ Deno.serve(async (req) => {
 
     const overall = score(findings)
     const confidence = Math.min(100, Math.round(findings.filter((f) => f.measurement === 'DETERMINISTIC').length / Math.max(1, findings.length) * 100))
-    const { data: assessment, error: insertError } = await supabase.from('prospect_geo_assessments').insert({ prospect_id: profile.id, overall_score: overall, confidence, measurement_status: 'deterministic', findings, recommendations: recs, source_evidence_ids: [...new Set(ids)], measured_metrics: {} }).select('id,overall_score,confidence,measurement_status,created_at').single()
+    const { data: assessment, error: insertError } = await supabase.from('prospect_geo_assessments').insert({ workspace_id: workspaceId, prospect_id: profile.id, overall_score: overall, confidence, measurement_status: 'deterministic', findings, recommendations: recs, source_evidence_ids: [...new Set(ids)], measured_metrics: {} }).select('id,overall_score,confidence,measurement_status,created_at').single()
     if (insertError) throw insertError
 
-    await supabase.from('prospect_evidence').insert({ prospect_id: profile.id, evidence_type: 'geo', source_type: 'derived', source_name: 'geo-intelligence', source_url: profile.website_url, claim: `Deterministic GEO readiness assessment scored ${overall}/100. This is not a measured AI-engine visibility score.`, evidence_data: { assessment_id: assessment.id, overall_score: overall, confidence, measurement_status: 'deterministic', findings_count: findings.length }, confidence: confidence / 100, evidence_key: `geo.assessment.${assessment.id}`, evidence_status: 'active', extractor: 'geo-intelligence/p0-11', observed_at: new Date().toISOString() })
+    await supabase.from('prospect_evidence').insert({ workspace_id: workspaceId, prospect_id: profile.id, evidence_type: 'geo', source_type: 'derived', source_name: 'geo-intelligence', source_url: profile.website_url, claim: `Deterministic GEO readiness assessment scored ${overall}/100. This is not a measured AI-engine visibility score.`, evidence_data: { assessment_id: assessment.id, overall_score: overall, confidence, measurement_status: 'deterministic', findings_count: findings.length }, confidence: confidence / 100, evidence_key: `geo.assessment.${assessment.id}`, evidence_status: 'active', extractor: 'geo-intelligence/p0-11', observed_at: new Date().toISOString() })
 
     return json({ ok: true, prospect_id: profile.id, assessment, findings, recommendations: recs, measured: false, measurement_status: 'deterministic' })
   } catch (error) {
