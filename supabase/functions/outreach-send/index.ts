@@ -62,9 +62,22 @@ Deno.serve(async (req) => {
     if (profileError) throw profileError
 
     const profileData = (profile.profile_data ?? {}) as Record<string, unknown>
-    const recipient = String(profileData.contact_email ?? '').trim()
+    const recipient = String(profileData.contact_email ?? '').trim().toLowerCase()
     if (!recipient || !recipient.includes('@')) {
       return json({ ok: false, reason: 'Verified prospect contact_email is missing', send_performed: false }, 409)
+    }
+
+    const { data: suppressed, error: suppressionError } = await supabase
+      .rpc('is_outreach_suppressed', { target_workspace_id: workspaceId, target_email: recipient })
+    if (suppressionError) throw suppressionError
+    if (suppressed === true) {
+      await supabase.from('audit_logs').insert({
+        action: 'personalized_outreach_suppressed',
+        resource_type: 'prospect_outreach_events',
+        resource_id: draft.id,
+        metadata: { prospect_id: draft.prospect_id, opportunity_id: draft.opportunity_id, recipient, provider: 'agentmail' },
+      })
+      return json({ ok: false, reason: 'Recipient is suppressed; external send blocked', send_performed: false, suppressed: true }, 409)
     }
 
     const { data: existingSent } = await supabase
@@ -119,6 +132,7 @@ Deno.serve(async (req) => {
       .insert({
         prospect_id: draft.prospect_id,
         opportunity_id: draft.opportunity_id,
+        workspace_id: workspaceId,
         channel: 'email',
         event_type: 'sent',
         content: text,
@@ -147,6 +161,7 @@ Deno.serve(async (req) => {
         source_draft_event_id: draft.id,
         provider: 'agentmail',
         provider_message_id: provider?.message_id ?? null,
+        provider_thread_id: provider?.thread_id ?? null,
         recipient,
         send_performed: true,
       },
