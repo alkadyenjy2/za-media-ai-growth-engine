@@ -88,6 +88,7 @@ export type ProspectEvidenceSeverity = 'info' | 'low' | 'medium' | 'high' | 'cri
 
 export interface ProspectProfile {
   id: string
+  workspace_id: string
   company_id: string
   canonical_name: string
   legal_name: string | null
@@ -119,7 +120,7 @@ export interface ProspectOpportunity { id: string; prospect_id: string; opportun
 export interface ProspectServiceMatch { id: string; prospect_id: string; opportunity_id: string | null; service_name: string; offer_name: string | null; rationale: string | null; expected_outcome: string | null; fit_score: number | null; match_data: Record<string, unknown>; created_at: string }
 export type ProspectOutreachChannel = 'email' | 'facebook' | 'instagram' | 'whatsapp' | 'phone' | 'other'
 export type ProspectOutreachEventType = 'drafted' | 'reviewed' | 'approved' | 'sent' | 'delivered' | 'opened' | 'replied' | 'positive' | 'negative' | 'question' | 'not_now' | 'wrong_person' | 'unsubscribe' | 'no_response' | 'follow_up' | 'stopped'
-export interface ProspectOutreachEvent { id: string; prospect_id: string; opportunity_id: string | null; channel: ProspectOutreachChannel; event_type: ProspectOutreachEventType; content: string | null; external_id: string | null; metadata: Record<string, unknown>; occurred_at: string; created_at: string }
+export interface ProspectOutreachEvent { id: string; workspace_id: string; prospect_id: string; opportunity_id: string | null; channel: ProspectOutreachChannel; event_type: ProspectOutreachEventType; content: string | null; external_id: string | null; metadata: Record<string, unknown>; occurred_at: string; created_at: string }
 
 export interface Campaign { id: string; company_id: string | null; page_id: string | null; name: string; objective: string; status: CampaignStatus; budget: number; leads_count: number; spend: number; starts_at: string | null; ends_at: string | null; created_at: string; companies?: { name: string } | null }
 export interface Conversation { id: string; lead_id: string; page_id: string | null; channel: string; status: 'open' | 'waiting' | 'closed'; last_message_at: string; created_at: string; leads?: { contact_name: string; phone: string; status: LeadStatus } | null }
