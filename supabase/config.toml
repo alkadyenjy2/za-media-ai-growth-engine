@@ -24,8 +24,5 @@ verify_jwt = true
 [functions.outreach-approve]
 verify_jwt = true
 
-[functions.outreach-send]
-verify_jwt = true
-
 [functions.agentmail-sync]
 verify_jwt = false
