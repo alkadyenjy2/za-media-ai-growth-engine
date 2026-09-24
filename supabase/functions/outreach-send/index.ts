@@ -78,9 +78,22 @@ Deno.serve(async (req) => {
     if (profileError) throw profileError
 
     const profileData = (profile.profile_data ?? {}) as Record<string, unknown>
-    const recipient = String(profileData.contact_email ?? '').trim().toLowerCase()
+    let recipient = String(profileData.contact_email ?? '').trim().toLowerCase()
     if (!recipient || !recipient.includes('@')) {
-      return json({ ok: false, reason: 'Verified prospect contact_email is missing', send_performed: false }, 409)
+      const { data: contact } = await supabase
+        .from('contacts')
+        .select('email,is_decision_maker,created_at')
+        .eq('company_id', profile.profile_data?.company_id ?? '')
+        .eq('workspace_id', workspaceId)
+        .not('email', 'is', null)
+        .order('is_decision_maker', { ascending: false })
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      recipient = String(contact?.email ?? '').trim().toLowerCase()
+    }
+    if (!recipient || !recipient.includes('@')) {
+      return json({ ok: false, reason: 'Verified prospect contact_email is missing and no linked contact email is available', send_performed: false }, 409)
     }
 
     const { data: suppressed, error: suppressionError } = await supabase
