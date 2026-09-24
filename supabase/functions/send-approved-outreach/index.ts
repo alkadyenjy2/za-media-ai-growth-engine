@@ -120,12 +120,32 @@ Deno.serve(async (req) => {
     if (profileError) throw profileError
 
     const profileData = (profile.profile_data ?? {}) as Record<string, unknown>
-    const recipient = getString(profileData, ['contact_email', 'email', 'primary_email'])
+    const nestedContact = (profileData.contact ?? {}) as Record<string, unknown>
+    const recipient = getString(profileData, ['contact_email', 'email', 'primary_email']) ?? getString(nestedContact, ['email'])
     if (!recipient) {
       return json({ ok: false, reason: 'No verified prospect email is stored for this approved outreach' }, 409)
     }
 
     const subject = getString(metadata, ['subject']) ?? `ZA Media — ${profile.canonical_name}`
+
+    const { data: opportunity, error: opportunityError } = await supabase
+      .from('prospect_opportunities')
+      .select('id,status')
+      .eq('id', outreach.opportunity_id)
+      .eq('prospect_id', outreach.prospect_id)
+      .eq('workspace_id', workspaceId)
+      .maybeSingle()
+    if (opportunityError) throw opportunityError
+    if (!opportunity || opportunity.status !== 'approved') {
+      return json({ ok: false, reason: 'Opportunity must be approved before external sending', opportunity_status: opportunity?.status ?? null }, 409)
+    }
+
+    const { data: suppressed, error: suppressionError } = await supabase.rpc('is_outreach_suppressed', { target_workspace_id: workspaceId, target_email: recipient })
+    if (suppressionError) throw suppressionError
+    if (suppressed === true) {
+      await supabase.from('audit_logs').insert({ action: 'personalized_outreach_suppressed', resource_type: 'prospect_outreach_events', resource_id: outreach.id, metadata: { prospect_id: outreach.prospect_id, opportunity_id: outreach.opportunity_id, recipient, provider: 'agentmail' } })
+      return json({ ok: false, reason: 'Recipient is suppressed; external send blocked', send_performed: false, suppressed: true }, 409)
+    }
     const idempotencyKey = `za-outreach-${outreach.id}`
 
     const sendingMetadata = {
@@ -154,6 +174,7 @@ Deno.serve(async (req) => {
         .insert({
           prospect_id: outreach.prospect_id,
           opportunity_id: outreach.opportunity_id,
+          workspace_id: workspaceId,
           channel: 'email',
           event_type: 'sent',
           content: outreach.content,
