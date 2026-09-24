@@ -4,7 +4,7 @@ import { Sidebar, type PageKey } from './Sidebar'
 import { supabaseConfigured } from '../lib/supabase'
 import { useAuth } from '../auth/AuthProvider'
 
-const titles: Record<PageKey, string> = { overview: 'Operations overview', leads: 'Lead pipeline', conversations: 'Conversations', campaigns: 'Campaign manager', companies: 'Companies & pages', income: 'Income tracking', audit: 'Activity log' }
+const titles: Record<PageKey, string> = { overview: 'Operations overview', leads: 'Lead pipeline', outreach: 'Outreach', conversations: 'Conversations', campaigns: 'Campaign manager', companies: 'Companies & pages', income: 'Income tracking', audit: 'Activity log' }
 
 export function Layout({ active, onNavigate, children }: { active: PageKey; onNavigate: (page: PageKey) => void; children: ReactNode }) {
   const [open, setOpen] = useState(false)
