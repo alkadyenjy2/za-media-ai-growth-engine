@@ -1,0 +1,21 @@
+name: ZA Media AgentMail Sync
+
+on:
+  schedule:
+    - cron: '15 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync AgentMail inbound
+        env:
+          AGENTMAIL_SYNC_SECRET: ${{ secrets.AGENTMAIL_SYNC_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$AGENTMAIL_SYNC_SECRET"
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "x-za-agentmail-sync-secret: $AGENTMAIL_SYNC_SECRET" \
+            "https://kipkdfydajlqsoaslhuv.supabase.co/functions/v1/agentmail-sync"
