@@ -1,10 +1,11 @@
-import { Building2, CircleDollarSign, FileClock, LayoutDashboard, MessageSquare, Megaphone, Users, X } from 'lucide-react'
+import { Building2, CircleDollarSign, FileClock, LayoutDashboard, MessageSquare, Megaphone, Send, Users, X } from 'lucide-react'
 import { supabaseConfigured } from '../lib/supabase'
 
-export type PageKey = 'overview' | 'leads' | 'conversations' | 'campaigns' | 'companies' | 'income' | 'audit'
+export type PageKey = 'overview' | 'leads' | 'outreach' | 'conversations' | 'campaigns' | 'companies' | 'income' | 'audit'
 const items: { key: PageKey; label: string; icon: typeof LayoutDashboard }[] = [
   { key: 'overview', label: 'Overview', icon: LayoutDashboard },
   { key: 'leads', label: 'Leads', icon: Users },
+  { key: 'outreach', label: 'Outreach', icon: Send },
   { key: 'conversations', label: 'Conversations', icon: MessageSquare },
   { key: 'campaigns', label: 'Campaigns', icon: Megaphone },
   { key: 'companies', label: 'Companies & Pages', icon: Building2 },
