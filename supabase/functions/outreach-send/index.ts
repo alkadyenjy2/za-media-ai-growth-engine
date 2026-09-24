@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
 
     const { data: profile, error: profileError } = await supabase
       .from('prospect_profiles')
-      .select('id,canonical_name,profile_data')
+      .select('id,canonical_name,company_id,profile_data')
       .eq('id', draft.prospect_id)
       .eq('workspace_id', workspaceId)
       .single()
@@ -83,7 +83,7 @@ Deno.serve(async (req) => {
       const { data: contact } = await supabase
         .from('contacts')
         .select('email,is_decision_maker,created_at')
-        .eq('company_id', profile.profile_data?.company_id ?? '')
+        .eq('company_id', profile.company_id)
         .eq('workspace_id', workspaceId)
         .not('email', 'is', null)
         .order('is_decision_maker', { ascending: false })
