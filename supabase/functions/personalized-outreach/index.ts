@@ -177,12 +177,15 @@ ${JSON.stringify(evidence.map((e) => ({ id: e.id, type: e.evidence_type, claim: 
     }).select('id,prospect_id,opportunity_id,channel,event_type,content,metadata,occurred_at').single()
     if (insertError) throw insertError
 
-    await supabase.from('audit_logs').insert({
+    const { error: auditError } = await supabase.from('audit_logs').insert({
+      workspace_id: workspaceId,
       action: 'personalized_outreach_draft',
-      resource_type: 'prospect_outreach_events',
-      resource_id: event.id,
-      metadata: { prospect_id: profile.id, opportunity_id: opportunity.id, channel, human_approval_required: true, send_performed: false },
+      entity_type: 'prospect_outreach_events',
+      entity_id: event.id,
+      actor: 'personalized-outreach',
+      details: { prospect_id: profile.id, opportunity_id: opportunity.id, channel, human_approval_required: true, send_performed: false },
     })
+    if (auditError) throw auditError
 
     return json({ ok: true, draft_event: event, draft, compliance, prospect_id: profile.id, opportunity_id: opportunity.id })
   } catch (error) {
