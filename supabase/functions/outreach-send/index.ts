@@ -100,12 +100,15 @@ Deno.serve(async (req) => {
       .rpc('is_outreach_suppressed', { target_workspace_id: workspaceId, target_email: recipient })
     if (suppressionError) throw suppressionError
     if (suppressed === true) {
-      await supabase.from('audit_logs').insert({
+      const { error: suppressionAuditError } = await supabase.from('audit_logs').insert({
+        workspace_id: workspaceId,
         action: 'personalized_outreach_suppressed',
-        resource_type: 'prospect_outreach_events',
-        resource_id: draft.id,
-        metadata: { prospect_id: draft.prospect_id, opportunity_id: draft.opportunity_id, recipient, provider: 'agentmail' },
+        entity_type: 'prospect_outreach_events',
+        entity_id: draft.id,
+        actor: 'outreach-send',
+        details: { prospect_id: draft.prospect_id, opportunity_id: draft.opportunity_id, recipient, provider: 'agentmail' },
       })
+      if (suppressionAuditError) throw suppressionAuditError
       return json({ ok: false, reason: 'Recipient is suppressed; external send blocked', send_performed: false, suppressed: true }, 409)
     }
 
@@ -140,10 +143,12 @@ Deno.serve(async (req) => {
     const responseText = await response.text()
     if (!response.ok) {
       await supabase.from('audit_logs').insert({
+        workspace_id: workspaceId,
         action: 'personalized_outreach_send_failed',
-        resource_type: 'prospect_outreach_events',
-        resource_id: draft.id,
-        metadata: {
+        entity_type: 'prospect_outreach_events',
+        entity_id: draft.id,
+        actor: 'outreach-send',
+        details: {
           prospect_id: draft.prospect_id,
           opportunity_id: draft.opportunity_id,
           recipient,
@@ -180,11 +185,13 @@ Deno.serve(async (req) => {
       .single()
     if (sentError) throw sentError
 
-    await supabase.from('audit_logs').insert({
+    const { error: sentAuditError } = await supabase.from('audit_logs').insert({
+      workspace_id: workspaceId,
       action: 'personalized_outreach_sent',
-      resource_type: 'prospect_outreach_events',
-      resource_id: sentEvent.id,
-      metadata: {
+      entity_type: 'prospect_outreach_events',
+      entity_id: sentEvent.id,
+      actor: 'outreach-send',
+      details: {
         prospect_id: draft.prospect_id,
         opportunity_id: draft.opportunity_id,
         source_draft_event_id: draft.id,
@@ -195,6 +202,7 @@ Deno.serve(async (req) => {
         send_performed: true,
       },
     })
+    if (sentAuditError) throw sentAuditError
 
     return json({
       ok: true,
