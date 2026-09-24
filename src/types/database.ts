@@ -35,6 +35,7 @@ export interface Lead {
   workspace_id: string
   company_id: string
   contact_id: string
+  idempotency_key: string | null
   contact_name: string
   company_name: string
   avatar_url: string | null
