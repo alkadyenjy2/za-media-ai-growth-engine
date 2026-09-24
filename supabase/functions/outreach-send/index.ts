@@ -4,7 +4,7 @@ function unauthorized(message: string) {
   return new Response(JSON.stringify({ ok: false, error: message }), { status: 401, headers: { 'Content-Type': 'application/json' } })
 }
 async function requireProspectWorkspaceAccess(req: Request, supabase: ReturnType<typeof createClient>, prospectId: string) {
-  const token = req.headers.get('Authorization')?.replace(/^Bearer\\s+/i, '')
+  const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '')
   if (!token) throw unauthorized('Authentication required')
   const { data: authData, error: authError } = await supabase.auth.getUser(token)
   if (authError || !authData.user) throw unauthorized('Authentication required')
