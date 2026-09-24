@@ -161,6 +161,7 @@ ${JSON.stringify(evidence.map((e) => ({ id: e.id, type: e.evidence_type, claim: 
     const { data: event, error: insertError } = await supabase.from('prospect_outreach_events').insert({
       prospect_id: profile.id,
       opportunity_id: opportunity.id,
+      workspace_id: workspaceId,
       channel,
       event_type: 'drafted',
       content: draft.body,
