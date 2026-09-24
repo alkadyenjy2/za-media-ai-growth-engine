@@ -52,7 +52,8 @@ Deno.serve(async (req) => {
       .select('id,canonical_name,company_id,profile_data').eq('id', draft.prospect_id).eq('workspace_id', workspaceId).single()
     if (profileError) throw profileError
     const profileData = (profile.profile_data ?? {}) as Record<string, unknown>
-    let recipient = String(profileData.contact_email ?? '').trim().toLowerCase()
+    const nestedContact = (profileData.contact ?? {}) as Record<string, unknown>
+    let recipient = String(profileData.contact_email ?? nestedContact.email ?? '').trim().toLowerCase()
     if (!recipient || !recipient.includes('@')) {
       const { data: contact } = await supabase.from('contacts').select('email,is_decision_maker,created_at')
         .eq('company_id', profile.company_id).eq('workspace_id', workspaceId).not('email', 'is', null)
