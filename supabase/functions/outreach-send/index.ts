@@ -1,219 +1,101 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-function unauthorized(message: string) {
-  return new Response(JSON.stringify({ ok: false, error: message }), { status: 401, headers: { 'Content-Type': 'application/json' } })
-}
-async function requireProspectWorkspaceAccess(req: Request, supabase: ReturnType<typeof createClient>, prospectId: string) {
-  const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '')
-  if (!token) throw unauthorized('Authentication required')
-  const { data: authData, error: authError } = await supabase.auth.getUser(token)
-  if (authError || !authData.user) throw unauthorized('Authentication required')
-  const { data: profile, error: profileError } = await supabase.from('prospect_profiles').select('workspace_id').eq('id', prospectId).maybeSingle()
-  if (profileError) throw profileError
-  if (!profile?.workspace_id) throw unauthorized('Unauthorized')
-  const { data: membership, error: membershipError } = await supabase.from('workspace_members').select('workspace_id').eq('workspace_id', profile.workspace_id).eq('user_id', authData.user.id).maybeSingle()
-  if (membershipError) throw membershipError
-  if (!membership) throw unauthorized('Unauthorized')
-  return { userId: authData.user.id, workspaceId: profile.workspace_id as string }
-}
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
+const jsonHeaders = { ...corsHeaders, 'Content-Type': 'application/json' }
 const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  new Response(JSON.stringify(body), { status, headers: jsonHeaders })
 
-const AGENTMAIL_API = 'https://api.agentmail.to/v0'
-const AGENTMAIL_INBOX_ID = Deno.env.get('AGENTMAIL_INBOX_ID') || 'enjy-4142@agentmail.to'
+function unauthorized(status: 401 | 403, message: string) {
+  return json({ ok: false, error: message }, status)
+}
+
+async function requireProspectWorkspaceAccess(req: Request, supabase: ReturnType<typeof createClient>, prospectId: string) {
+  const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '')
+  if (!token) throw unauthorized(401, 'Authentication required')
+  const { data: authData, error: authError } = await supabase.auth.getUser(token)
+  if (authError || !authData.user) throw unauthorized(401, 'Authentication required')
+  const { data: profile, error: profileError } = await supabase.from('prospect_profiles').select('workspace_id').eq('id', prospectId).maybeSingle()
+  if (profileError) throw profileError
+  if (!profile?.workspace_id) throw unauthorized(403, 'Unauthorized')
+  const { data: membership, error: membershipError } = await supabase.from('workspace_members').select('workspace_id').eq('workspace_id', profile.workspace_id).eq('user_id', authData.user.id).maybeSingle()
+  if (membershipError) throw membershipError
+  if (!membership) throw unauthorized(403, 'Unauthorized')
+  return { userId: authData.user.id, workspaceId: profile.workspace_id as string }
+}
+
+async function sendAgentMail(apiKey: string, inboxId: string, to: string, subject: string, text: string) {
+  const response = await fetch(`https://api.agentmail.to/v0/inboxes/${encodeURIComponent(inboxId)}/messages/send`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ to: [to], subject, text }),
+  })
+  const bodyText = await response.text()
+  let body: Record<string, unknown> = {}
+  try { body = bodyText ? JSON.parse(bodyText) : {} } catch { body = { raw: bodyText.slice(0, 1000) } }
+  if (!response.ok) {
+    const code = typeof body.code === 'string' ? body.code : undefined
+    throw new Error(`AgentMail send failed (${response.status})${code ? ` [${code}]` : ''}`)
+  }
+  return body as { message_id?: string; thread_id?: string }
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return json({ ok: false, error: 'Method not allowed' }, 405)
-
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-    const agentMailKey = Deno.env.get('AGENTMAIL_API_KEY')
-    if (!supabaseUrl || !serviceRoleKey) throw new Error('Server configuration is missing')
-    if (!agentMailKey) return json({ ok: false, reason: 'AGENTMAIL_API_KEY is not configured in Supabase Secrets', send_performed: false }, 503)
-
+    const agentMailApiKey = Deno.env.get('AGENTMAIL_API_KEY')
+    const agentMailInboxId = Deno.env.get('AGENTMAIL_INBOX_ID') ?? 'enjy-4142@agentmail.to'
+    if (!supabaseUrl || !serviceRoleKey || !agentMailApiKey) {
+      return json({ ok: false, error: 'Server configuration is missing', missing: { AGENTMAIL_API_KEY: !agentMailApiKey } }, 503)
+    }
     const input = await req.json()
-    if (!input.outreach_event_id) throw new Error('outreach_event_id is required')
-
+    const outreachEventId = String(input.outreach_event_id ?? '')
+    if (!outreachEventId) return json({ ok: false, error: 'outreach_event_id is required' }, 400)
     const supabase = createClient(supabaseUrl, serviceRoleKey)
-    const { data: draft, error: draftError } = await supabase
-      .from('prospect_outreach_events')
-      .select('id,prospect_id,opportunity_id,channel,event_type,content,metadata')
-      .eq('id', input.outreach_event_id)
-      .single()
-    if (draftError) throw draftError
-    if (!draft) return json({ ok: false, reason: 'Outreach event not found' }, 404)
-    if (draft.channel !== 'email') return json({ ok: false, reason: 'Only email dispatch is implemented for AgentMail', channel: draft.channel }, 409)
-    if (draft.event_type !== 'approved') {
-      return json({ ok: false, reason: 'Outreach event must be explicitly approved before sending', event_type: draft.event_type }, 409)
-    }
-
-    const { workspaceId } = await requireProspectWorkspaceAccess(req, supabase, String(draft.prospect_id))
-
-    const { data: opportunity, error: opportunityError } = await supabase
-      .from('prospect_opportunities')
-      .select('id,status')
-      .eq('id', draft.opportunity_id)
-      .eq('prospect_id', draft.prospect_id)
-      .eq('workspace_id', workspaceId)
-      .single()
-    if (opportunityError) throw opportunityError
-    if (opportunity.status !== 'approved') {
-      return json({ ok: false, reason: 'Opportunity must be approved before external sending', opportunity_status: opportunity.status }, 409)
-    }
-
-    const { data: profile, error: profileError } = await supabase
-      .from('prospect_profiles')
-      .select('id,canonical_name,company_id,profile_data')
-      .eq('id', draft.prospect_id)
-      .eq('workspace_id', workspaceId)
-      .single()
+    const { data: event, error: eventError } = await supabase.from('prospect_outreach_events').select('id, prospect_id, opportunity_id, channel, event_type, content, metadata, external_id, workspace_id, occurred_at').eq('id', outreachEventId).single()
+    if (eventError) throw eventError
+    const { workspaceId, userId } = await requireProspectWorkspaceAccess(req, supabase, event.prospect_id)
+    if (event.workspace_id !== workspaceId) return unauthorized(403, 'Unauthorized')
+    if (event.channel !== 'email') return json({ ok: false, reason: 'AgentMail dispatcher currently supports email only' }, 409)
+    if (event.event_type !== 'approved') return json({ ok: false, reason: 'Explicit human approval is required before dispatch', current_event_type: event.event_type }, 409)
+    const metadata = (event.metadata ?? {}) as Record<string, unknown>
+    if (event.external_id || metadata.dispatch_status === 'sent') return json({ ok: false, reason: 'Outreach event was already sent', outreach_event_id: event.id }, 409)
+    if (metadata.dispatch_status === 'sending') return json({ ok: false, reason: 'Dispatch is already in progress or requires recovery review', outreach_event_id: event.id }, 409)
+    const { data: profile, error: profileError } = await supabase.from('prospect_profiles').select('id, canonical_name, profile_data').eq('id', event.prospect_id).eq('workspace_id', workspaceId).single()
     if (profileError) throw profileError
-
     const profileData = (profile.profile_data ?? {}) as Record<string, unknown>
-    let recipient = String(profileData.contact_email ?? '').trim().toLowerCase()
-    if (!recipient || !recipient.includes('@')) {
-      const { data: contact } = await supabase
-        .from('contacts')
-        .select('email,is_decision_maker,created_at')
-        .eq('company_id', profile.company_id)
-        .eq('workspace_id', workspaceId)
-        .not('email', 'is', null)
-        .order('is_decision_maker', { ascending: false })
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle()
-      recipient = String(contact?.email ?? '').trim().toLowerCase()
+    const recipient = typeof profileData.contact_email === 'string' ? profileData.contact_email.trim().toLowerCase() : ''
+    if (!recipient || !recipient.includes('@')) return json({ ok: false, reason: 'No verified prospect contact email is available' }, 409)
+    const { data: suppression } = await supabase.from('outreach_suppressions').select('id, reason').eq('workspace_id', workspaceId).eq('email', recipient).limit(1).maybeSingle()
+    if (suppression) return json({ ok: false, reason: 'Recipient is suppressed from outreach', suppression_reason: suppression.reason }, 409)
+    const subject = typeof metadata.subject === 'string' && metadata.subject.trim() ? metadata.subject.trim() : `ZA Media — ${profile.canonical_name}`
+    const content = typeof event.content === 'string' ? event.content.trim() : ''
+    if (!content) return json({ ok: false, reason: 'Approved outreach event has empty content' }, 409)
+    const claimedMetadata = { ...metadata, dispatch_status: 'sending', dispatch_started_at: new Date().toISOString(), dispatch_started_by: userId, provider: 'agentmail', inbox_id: agentMailInboxId }
+    const { data: claimed, error: claimError } = await supabase.from('prospect_outreach_events').update({ metadata: claimedMetadata }).eq('id', event.id).eq('workspace_id', workspaceId).eq('event_type', 'approved').is('external_id', null).select('id').maybeSingle()
+    if (claimError) throw claimError
+    if (!claimed) return json({ ok: false, reason: 'Outreach event could not be claimed for dispatch; it may have changed concurrently' }, 409)
+    let providerResult: { message_id?: string; thread_id?: string }
+    try { providerResult = await sendAgentMail(agentMailApiKey, agentMailInboxId, recipient, subject, content) } catch (sendError) {
+      await supabase.from('prospect_outreach_events').update({ metadata: { ...claimedMetadata, dispatch_status: 'failed', dispatch_failed_at: new Date().toISOString(), dispatch_error: sendError instanceof Error ? sendError.message : 'Unknown AgentMail error' } }).eq('id', event.id).eq('workspace_id', workspaceId)
+      throw sendError
     }
-    if (!recipient || !recipient.includes('@')) {
-      return json({ ok: false, reason: 'Verified prospect contact_email is missing and no linked contact email is available', send_performed: false }, 409)
-    }
-
-    const { data: suppressed, error: suppressionError } = await supabase
-      .rpc('is_outreach_suppressed', { target_workspace_id: workspaceId, target_email: recipient })
-    if (suppressionError) throw suppressionError
-    if (suppressed === true) {
-      const { error: suppressionAuditError } = await supabase.from('audit_logs').insert({
-        workspace_id: workspaceId,
-        action: 'personalized_outreach_suppressed',
-        entity_type: 'prospect_outreach_events',
-        entity_id: draft.id,
-        actor: 'outreach-send',
-        details: { prospect_id: draft.prospect_id, opportunity_id: draft.opportunity_id, recipient, provider: 'agentmail' },
-      })
-      if (suppressionAuditError) throw suppressionAuditError
-      return json({ ok: false, reason: 'Recipient is suppressed; external send blocked', send_performed: false, suppressed: true }, 409)
-    }
-
-    const { data: existingSent } = await supabase
-      .from('prospect_outreach_events')
-      .select('id,metadata,occurred_at')
-      .eq('prospect_id', draft.prospect_id)
-      .eq('opportunity_id', draft.opportunity_id)
-      .eq('event_type', 'sent')
-      .contains('metadata', { source_draft_event_id: draft.id })
-      .limit(1)
-    if (existingSent?.length) {
-      return json({ ok: true, duplicate: true, send_performed: false, sent_event: existingSent[0] })
-    }
-
-    const metadata = (draft.metadata ?? {}) as Record<string, unknown>
-    const subject = String(metadata.subject ?? 'ZA Media — quick growth review')
-    const text = String(draft.content ?? '').trim()
-    if (!text) return json({ ok: false, reason: 'Draft body is empty', send_performed: false }, 409)
-
-    const idempotencyKey = `za-outreach-${draft.id}`
-    const response = await fetch(`${AGENTMAIL_API}/inboxes/${encodeURIComponent(AGENTMAIL_INBOX_ID)}/messages/send`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${agentMailKey}`,
-        'Content-Type': 'application/json',
-        'Idempotency-Key': idempotencyKey,
-      },
-      body: JSON.stringify({ to: [recipient], subject, text }),
-    })
-
-    const responseText = await response.text()
-    if (!response.ok) {
-      await supabase.from('audit_logs').insert({
-        workspace_id: workspaceId,
-        action: 'personalized_outreach_send_failed',
-        entity_type: 'prospect_outreach_events',
-        entity_id: draft.id,
-        actor: 'outreach-send',
-        details: {
-          prospect_id: draft.prospect_id,
-          opportunity_id: draft.opportunity_id,
-          recipient,
-          provider: 'agentmail',
-          status: response.status,
-          error: responseText.slice(0, 1000),
-        },
-      })
-      return json({ ok: false, reason: 'AgentMail send failed', provider_status: response.status, send_performed: false }, 502)
-    }
-
-    const provider = JSON.parse(responseText)
-    const { data: sentEvent, error: sentError } = await supabase
-      .from('prospect_outreach_events')
-      .insert({
-        prospect_id: draft.prospect_id,
-        opportunity_id: draft.opportunity_id,
-        workspace_id: workspaceId,
-        channel: 'email',
-        event_type: 'sent',
-        content: text,
-        metadata: {
-          source_draft_event_id: draft.id,
-          provider: 'agentmail',
-          provider_message_id: provider?.message_id ?? null,
-          provider_thread_id: provider?.thread_id ?? null,
-          recipient,
-          subject,
-          send_performed: true,
-          idempotency_key: idempotencyKey,
-        },
-      })
-      .select('id,prospect_id,opportunity_id,channel,event_type,metadata,occurred_at')
-      .single()
+    const messageId = typeof providerResult.message_id === 'string' ? providerResult.message_id : null
+    const threadId = typeof providerResult.thread_id === 'string' ? providerResult.thread_id : null
+    if (!messageId) throw new Error('AgentMail returned no message_id')
+    const sentMetadata = { ...claimedMetadata, dispatch_status: 'sent', sent_at: new Date().toISOString(), provider_message_id: messageId, provider_thread_id: threadId, provider: 'agentmail' }
+    const { data: sentEvent, error: sentError } = await supabase.from('prospect_outreach_events').update({ event_type: 'sent', external_id: messageId, metadata: sentMetadata, occurred_at: new Date().toISOString() }).eq('id', event.id).eq('workspace_id', workspaceId).is('external_id', null).select('id,prospect_id,opportunity_id,channel,event_type,external_id,metadata,occurred_at').single()
     if (sentError) throw sentError
-
-    const { error: sentAuditError } = await supabase.from('audit_logs').insert({
-      workspace_id: workspaceId,
-      action: 'personalized_outreach_sent',
-      entity_type: 'prospect_outreach_events',
-      entity_id: sentEvent.id,
-      actor: 'outreach-send',
-      details: {
-        prospect_id: draft.prospect_id,
-        opportunity_id: draft.opportunity_id,
-        source_draft_event_id: draft.id,
-        provider: 'agentmail',
-        provider_message_id: provider?.message_id ?? null,
-        provider_thread_id: provider?.thread_id ?? null,
-        recipient,
-        send_performed: true,
-      },
-    })
-    if (sentAuditError) throw sentAuditError
-
-    return json({
-      ok: true,
-      send_performed: true,
-      provider: 'agentmail',
-      provider_message_id: provider?.message_id ?? null,
-      provider_thread_id: provider?.thread_id ?? null,
-      sent_event: sentEvent,
-    })
+    await supabase.from('audit_logs').insert({ workspace_id: workspaceId, action: 'personalized_outreach_sent', entity_type: 'prospect_outreach_events', entity_id: event.id, actor: 'agentmail_dispatcher', details: { prospect_id: event.prospect_id, opportunity_id: event.opportunity_id, recipient, provider: 'agentmail', provider_message_id: messageId, provider_thread_id: threadId, approved_by_user_id: userId } })
+    return json({ ok: true, send_performed: true, provider: 'agentmail', message_id: messageId, thread_id: threadId, outreach_event: sentEvent })
   } catch (error) {
     if (error instanceof Response) return error
-    return json({ ok: false, error: error instanceof Error ? error.message : 'Unknown error', send_performed: false }, 400)
+    return json({ ok: false, error: error instanceof Error ? error.message : 'Unknown error' }, 400)
   }
 })
