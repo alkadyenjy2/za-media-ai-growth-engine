@@ -2,7 +2,7 @@
 import { action, internalQuery, mutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 
-function productionFrozen() { return process.env.PRODUCTION_FREEZE === "true"; }
+// Outbound production is intentionally frozen in the canonical code path.\n// Re-enabling requires an explicit code review/change; environment drift alone\n// must never be able to open the outbound gate.\nconst PRODUCTION_OUTBOUND_FROZEN = true;\nfunction productionFrozen() { return PRODUCTION_OUTBOUND_FROZEN; }
 
 export const approve = mutation({
   args: { outreach_event_id: v.string(), reason: v.string() },
