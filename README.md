@@ -2,8 +2,6 @@
 
 > A public engineering case study for an AI-assisted growth and operations system spanning lead intake, qualification, CRM-oriented workflows, intelligence, and business visibility.
 
-**Live project:** https://za-media-ai-growth-engine.vercel.app
-
 ## Overview
 
 ZA Media AI Growth Engine is a React/TypeScript application with a Convex-backed operations layer. The public repository documents an implementation that brings together product surfaces, AI-assisted qualification and audit flows, prospect and website intelligence, scoring, service matching, opportunity workflows, and workspace-oriented operations.
@@ -49,7 +47,7 @@ The repository's `package.json` directly identifies the following stack:
 - Recharts
 - Lucide React
 
-The server-side functions read provider credentials from environment variables and include Gemini-backed AI paths. Secrets are expected to remain outside the repository.
+The canonical backend is Convex. Server-side provider credentials are read from environment variables; secrets are expected to remain outside the repository. The legacy `supabase/` tree is retained as historical source material and is not the canonical production backend.
 
 ## What I built
 
@@ -67,7 +65,7 @@ The public codebase includes work on:
 
 ## Engineering signals
 
-The public implementation history includes work on multiple server-side AI and intelligence functions, including qualification, audit, prospect monitoring, meta prospecting, scoring, social intelligence, intent, outreach, geo intelligence, service matching, opportunity processing, and website intelligence.
+The implementation history includes server-side AI and intelligence work across qualification, audit, prospect monitoring, Meta integration, scoring, social intelligence, intent, outreach, geo intelligence, service matching, opportunity processing, and website intelligence. The current canonical runtime path is Convex.
 
 The repository also separates application code, Convex infrastructure, documentation, brand assets, and deployment configuration rather than presenting the project as a single undifferentiated prototype.
 
@@ -118,6 +116,8 @@ npm run preview
 ## Status
 
 **Public engineering case study with an active implementation history.**
+
+Production outbound actions are intentionally fail-closed while external credentials and authenticated integration evidence are unavailable. No repository code alone is treated as proof of successful external execution.
 
 The repository documents the architecture and implementation boundaries that can be verified from GitHub. Production integrations and external business outcomes are intentionally described conservatively unless independently verified.
 
