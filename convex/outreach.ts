@@ -1,9 +1,13 @@
-import { v } from "convex/values";
+﻿import { v } from "convex/values";
 import { action, internalQuery, mutation } from "./_generated/server";
 import { internal } from "./_generated/api";
+
+function productionFrozen() { return process.env.PRODUCTION_FREEZE === "true"; }
+
 export const approve = mutation({
   args: { outreach_event_id: v.string(), reason: v.string() },
   handler: async (ctx, args) => {
+    if (productionFrozen()) throw new Error("PRODUCTION_FREEZE: outbound approval is disabled.");
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
     const workspace = await ctx.db.query("workspaces").withIndex("by_owner", (q: any) => q.eq("ownerSubject", identity.subject)).unique();
@@ -16,6 +20,7 @@ export const approve = mutation({
     return { ok: true, id: args.outreach_event_id };
   },
 });
+
 export const getForSend = internalQuery({
   args: { outreach_event_id: v.string(), subject: v.string() },
   handler: async (ctx, args) => {
@@ -30,6 +35,7 @@ export const getForSend = internalQuery({
 export const send = action({
   args: { outreach_event_id: v.string() },
   handler: async (ctx, args) => {
+    if (productionFrozen()) return { ok: false, reason: "PRODUCTION_FREEZE", evidence: "Outbound dispatch is globally disabled in canonical production." };
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return { ok: false, reason: "NOT_AUTHENTICATED" };
     const event = await ctx.runQuery(internal.outreach.getForSend, { outreach_event_id: args.outreach_event_id, subject: identity.subject });
