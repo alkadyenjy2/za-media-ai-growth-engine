@@ -12,6 +12,7 @@ import type * as ai from "../ai.js";
 import type * as auth from "../auth.js";
 import type * as core from "../core.js";
 import type * as http from "../http.js";
+import type * as meta from "../meta.js";
 import type * as outreach from "../outreach.js";
 
 import type {
@@ -25,6 +26,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   core: typeof core;
   http: typeof http;
+  meta: typeof meta;
   outreach: typeof outreach;
 }>;
 
