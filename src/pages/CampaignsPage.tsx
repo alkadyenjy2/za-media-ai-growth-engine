@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Megaphone, Plus } from 'lucide-react'
-import { supabase, supabaseConfigured } from '../lib/supabase'
+import { dataClient, backendConfigured } from '../lib/backend'
 import type { Campaign, CampaignStatus } from '../types/database'
 import { Modal } from '../components/Modal'
 
@@ -16,7 +16,7 @@ export function CampaignsPage() {
 
   const load = async () => {
     setLoading(true); setError('')
-    const { data, error: loadError } = await supabase.from('campaigns').select('*, companies(name)').order('created_at', { ascending: false })
+    const { data, error: loadError } = await dataClient.from('campaigns').select('*, companies(name)').order('created_at', { ascending: false })
     if (loadError) setError(loadError.message)
     setCampaigns((data as Campaign[]) ?? [])
     setLoading(false)
@@ -26,9 +26,9 @@ export function CampaignsPage() {
   const createCampaign = async (e: FormEvent) => {
     e.preventDefault(); setSaving(true); setError('')
     const payload = { ...form, budget: Number(form.budget) || 0, status: 'draft' as CampaignStatus }
-    const { data, error: saveError } = await supabase.from('campaigns').insert(payload).select().maybeSingle()
+    const { data, error: saveError } = await dataClient.from('campaigns').insert(payload).select().maybeSingle()
     if (saveError) { setError(saveError.message); setSaving(false); return }
-    if (supabaseConfigured) await supabase.from('audit_logs').insert({ action: 'campaign_created', entity_type: 'campaign', actor: 'dashboard', details: { id: (data as Campaign | null)?.id ?? 'unknown', name: form.name } })
+    if (backendConfigured) await dataClient.from('audit_logs').insert({ action: 'campaign_created', entity_type: 'campaign', actor: 'dashboard', details: { id: (data as Campaign | null)?.id ?? 'unknown', name: form.name } })
     setForm(emptyForm); setShowModal(false); await load(); setSaving(false)
   }
 
@@ -58,3 +58,6 @@ export function CampaignsPage() {
     </Modal>}
   </div>
 }
+
+
+

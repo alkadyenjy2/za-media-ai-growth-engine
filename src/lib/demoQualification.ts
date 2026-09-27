@@ -8,3 +8,6 @@ export function qualifyDemoLead(input: DemoLeadInput): DemoQualification {
   if (hasWorkEmail) return { priority: 'Medium', leadType: 'Marketing planning request', nextAction: 'Review the request and confirm the primary growth priority.' }
   return { priority: 'Low', leadType: 'Early-stage request', nextAction: 'Review the request and collect the missing business context.' }
 }
+
+
+

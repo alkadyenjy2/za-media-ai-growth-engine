@@ -6,3 +6,6 @@ const classes: Record<LeadStatus, string> = { Hot: 'badge-error', Warm: 'badge-w
 export function StatusBadge({ status }: { status: LeadStatus }) {
   return <span className={classes[status]}>{labels[status]}</span>
 }
+
+
+

@@ -4,3 +4,6 @@ export function trackZaEvent(event: ZaAnalyticsEvent) {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new CustomEvent('za-analytics', { detail: { event } }))
 }
+
+
+

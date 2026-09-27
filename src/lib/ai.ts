@@ -1,8 +1,8 @@
-import { supabase } from './supabase'
+import { dataClient } from './backend'
 import type { AiAudit, Lead } from '../types/database'
 
 export async function qualifyLead(lead: Lead) {
-  const { data, error } = await supabase.functions.invoke('ai-qualify', { body: { lead } })
+  const { data, error } = await dataClient.functions.invoke('ai-qualify', { body: { lead } })
   if (error) return { error: error.message }
   if (!data?.ok) return { error: data?.error ?? 'AI qualification failed' }
   return {
@@ -20,8 +20,11 @@ export async function runGrowthAudit(input: {
   lead_id?: string | null
   data?: Record<string, unknown>
 }) {
-  const { data, error } = await supabase.functions.invoke('ai-audit', { body: input })
+  const { data, error } = await dataClient.functions.invoke('ai-audit', { body: input })
   if (error) throw error
   if (!data?.ok) throw new Error(data?.error ?? 'AI growth audit failed')
   return { result: data.result, audit_id: data.audit_id } as { result: Omit<AiAudit, 'id' | 'company_id' | 'lead_id' | 'audit_type' | 'source_data' | 'created_at'>; audit_id: string }
 }
+
+
+

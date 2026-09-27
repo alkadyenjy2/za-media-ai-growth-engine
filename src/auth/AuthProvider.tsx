@@ -1,25 +1,25 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import type { Session, User } from '@supabase/supabase-js'
-import { supabase } from '../lib/supabase'
-
-type AuthContextValue = { session: Session | null; user: User | null; loading: boolean; signOut: () => Promise<void> }
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react'
+import { useMutation } from 'convex/react'
+import { api } from '../../convex/_generated/api'
+import { authClient } from '../lib/auth-client'
+type AuthContextValue = { session: any; user: any; loading: boolean; signOut: () => Promise<void> }
 const AuthContext = createContext<AuthContextValue | null>(null)
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null)
-  const [loading, setLoading] = useState(true)
+  const state = authClient.useSession()
+  const session = state.data ?? null
+  const user = session?.user ?? null
+  const ensureWorkspace = useMutation(api.core.ensureWorkspace)
   useEffect(() => {
-    let mounted = true
-    void supabase.auth.getSession().then(({ data }) => { if (mounted) { setSession(data.session); setLoading(false) } })
-    const { data } = supabase.auth.onAuthStateChange((_event, next) => setSession(next))
-    return () => { mounted = false; data.subscription.unsubscribe() }
-  }, [])
-  const value = useMemo(() => ({ session, user: session?.user ?? null, loading, signOut: async () => { await supabase.auth.signOut() } }), [session, loading])
+    if (user) void ensureWorkspace()
+  }, [user?.id, ensureWorkspace])
+  const value = useMemo(() => ({ session, user, loading: state.isPending, signOut: async () => { await authClient.signOut() } }), [session, user, state.isPending])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
-
 export function useAuth() {
   const value = useContext(AuthContext)
   if (!value) throw new Error('useAuth must be used inside AuthProvider')
   return value
 }
+
+
+

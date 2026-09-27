@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { CheckCircle2, Mail, RefreshCw, Send } from 'lucide-react'
-import { supabase, supabaseConfigured } from '../lib/supabase'
+import { dataClient, backendConfigured } from '../lib/backend'
 import type { ProspectOutreachEvent } from '../types/database'
 
 export function OutreachPage() {
@@ -11,24 +11,24 @@ export function OutreachPage() {
   const [error, setError] = useState('')
   const load = async () => {
     setLoading(true); setError('')
-    const result = await supabase.from('prospect_outreach_events').select('*').in('event_type', ['drafted', 'reviewed', 'approved', 'sent', 'replied', 'stopped']).order('occurred_at', { ascending: false }).limit(100)
+    const result = await dataClient.from('prospect_outreach_events').select('*').in('event_type', ['drafted', 'reviewed', 'approved', 'sent', 'replied', 'stopped']).order('occurred_at', { ascending: false }).limit(100)
     if (result.error) setError(result.error.message)
     setRows((result.data as ProspectOutreachEvent[]) || [])
     setLoading(false)
   }
-  useEffect(() => { if (supabaseConfigured) void load(); else setLoading(false) }, [])
+  useEffect(() => { if (backendConfigured) void load(); else setLoading(false) }, [])
   const drafts = rows.filter((row) => row.event_type === 'drafted' || row.event_type === 'reviewed')
   const approved = rows.filter((row) => row.event_type === 'approved')
   const approve = async (id: string) => {
     setBusyId(id); setError(''); setMessage('')
-    const result = await supabase.functions.invoke('outreach-approve', { body: { outreach_event_id: id, reason: 'Approved from ZA Media Outreach workspace' } })
+    const result = await dataClient.functions.invoke('outreach-approve', { body: { outreach_event_id: id, reason: 'Approved from ZA Media Outreach workspace' } })
     if (result.error || !result.data?.ok) setError(result.error?.message || result.data?.error || 'Approval failed')
     else setMessage('Draft approved and ready for explicit sending.')
     setBusyId(null); if (!result.error && result.data?.ok) await load()
   }
   const send = async (id: string) => {
     setBusyId(id); setError(''); setMessage('')
-    const result = await supabase.functions.invoke('outreach-send', { body: { outreach_event_id: id } })
+    const result = await dataClient.functions.invoke('outreach-send', { body: { outreach_event_id: id } })
     if (result.error || !result.data?.ok) setError(result.error?.message || result.data?.reason || result.data?.error || 'Send failed')
     else setMessage('Email sent through AgentMail and recorded.')
     setBusyId(null); if (!result.error && result.data?.ok) await load()
@@ -41,3 +41,6 @@ export function OutreachPage() {
     <div className="card overflow-hidden"><div className="border-b border-neutral-200 p-5"><div className="flex items-center gap-2"><Send size={18}/><h2 className="text-lg">Approved — explicit send</h2></div><p className="mt-1 text-sm text-neutral-500">This second action performs the external email send.</p></div><div className="divide-y divide-neutral-100">{approved.length === 0 ? <div className="p-10 text-center text-sm text-neutral-400">No approved email waiting to send.</div> : approved.map((row) => <div key={row.id} className="flex items-center justify-between gap-4 p-5"><div className="text-sm text-neutral-700">{row.content || 'Approved email'}</div><button className="btn-primary inline-flex shrink-0 items-center gap-2" onClick={() => void send(row.id)} disabled={busyId === row.id}><Send size={15}/>{busyId === row.id ? 'Sending…' : 'Send email'}</button></div>)}</div></div>
   </div>
 }
+
+
+

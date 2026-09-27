@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Building2, Plus } from 'lucide-react'
-import { supabase, supabaseConfigured } from '../lib/supabase'
+import { dataClient, backendConfigured } from '../lib/backend'
 import type { Company } from '../types/database'
 import { Modal } from '../components/Modal'
 
@@ -16,7 +16,7 @@ export function CompaniesPage() {
 
   const load = async () => {
     setLoading(true); setError('')
-    const { data, error: loadError } = await supabase.from('companies').select('*').order('created_at', { ascending: false })
+    const { data, error: loadError } = await dataClient.from('companies').select('*').order('created_at', { ascending: false })
     if (loadError) setError(loadError.message)
     setCompanies((data as Company[]) ?? [])
     setLoading(false)
@@ -29,10 +29,10 @@ export function CompaniesPage() {
       setError('Contact name, email, phone, and job title are required.'); setSaving(false); return
     }
 
-    const { data: company, error: companyError } = await supabase.from('companies').insert({ name: companyForm.name, industry: companyForm.industry }).select().maybeSingle()
+    const { data: company, error: companyError } = await dataClient.from('companies').insert({ name: companyForm.name, industry: companyForm.industry }).select().maybeSingle()
     if (companyError || !company) { setError(companyError?.message ?? 'Company creation failed.'); setSaving(false); return }
 
-    const { data: contact, error: contactError } = await supabase.from('contacts').insert({
+    const { data: contact, error: contactError } = await dataClient.from('contacts').insert({
       company_id: company.id,
       full_name: companyForm.contact_name,
       email: companyForm.contact_email,
@@ -46,8 +46,8 @@ export function CompaniesPage() {
       return
     }
 
-    if (supabaseConfigured) {
-      await supabase.from('audit_logs').insert([
+    if (backendConfigured) {
+      await dataClient.from('audit_logs').insert([
         { action: 'company.created', entity_type: 'company', entity_id: company.id, actor: 'dashboard', details: { name: companyForm.name } },
         { action: 'contact.created', entity_type: 'contact', entity_id: contact.id, actor: 'dashboard', details: { company_id: company.id, name: companyForm.contact_name } },
       ])
@@ -77,3 +77,6 @@ export function CompaniesPage() {
     </Modal>}
   </div>
 }
+
+
+

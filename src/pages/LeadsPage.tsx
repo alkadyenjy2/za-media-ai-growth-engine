@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Brain, Pencil, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
-import { supabase, supabaseConfigured } from '../lib/supabase'
+import { dataClient, backendConfigured } from '../lib/backend'
 import { qualifyLead } from '../lib/ai'
 import type { Company, Contact, Lead, LeadSource, LeadStatus, PipelineStage } from '../types/database'
 import { StatusBadge } from '../components/StatusBadge'
@@ -27,16 +27,16 @@ export function LeadsPage() {
   const [aiMessage, setAiMessage] = useState('')
 
   const logAction = async (action: string, entityId: string | null, details: Record<string, unknown>) => {
-    if (!supabaseConfigured) return
-    await supabase.from('audit_logs').insert({ action, entity_type: 'lead', entity_id: entityId, actor: 'dashboard', details })
+    if (!backendConfigured) return
+    await dataClient.from('audit_logs').insert({ action, entity_type: 'lead', entity_id: entityId, actor: 'dashboard', details })
   }
 
   const load = async () => {
     setLoading(true); setError('')
     const [leadsRes, companiesRes, contactsRes] = await Promise.all([
-      supabase.from('leads').select('*, companies(name), contacts(full_name, email, phone)').order('created_at', { ascending: false }),
-      supabase.from('companies').select('*').order('name'),
-      supabase.from('contacts').select('*').order('full_name'),
+      dataClient.from('leads').select('*, companies(name), contacts(full_name, email, phone)').order('created_at', { ascending: false }),
+      dataClient.from('companies').select('*').order('name'),
+      dataClient.from('contacts').select('*').order('full_name'),
     ])
     if (leadsRes.error) setError(leadsRes.error.message)
     if (companiesRes.error) setError(companiesRes.error.message)
@@ -81,8 +81,8 @@ export function LeadsPage() {
     }
 
     const result = editingId
-      ? await supabase.from('leads').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', editingId).select().maybeSingle()
-      : await supabase.from('leads').insert(payload).select().maybeSingle()
+      ? await dataClient.from('leads').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', editingId).select().maybeSingle()
+      : await dataClient.from('leads').insert(payload).select().maybeSingle()
     if (result.error || !result.data) { setError(result.error?.message ?? 'Lead save failed.'); setSaving(false); return }
 
     await logAction(editingId ? 'lead.updated' : 'lead.created', result.data.id, { contact_name: contact.full_name, company_name: company.name, status: form.status, source: form.source })
@@ -100,7 +100,7 @@ export function LeadsPage() {
   }
 
   const updateStatus = async (id: string, status: LeadStatus) => {
-    const { error: updateError } = await supabase.from('leads').update({ status, updated_at: new Date().toISOString() }).eq('id', id)
+    const { error: updateError } = await dataClient.from('leads').update({ status, updated_at: new Date().toISOString() }).eq('id', id)
     if (updateError) { setError(updateError.message); return }
     await logAction('lead.status_changed', id, { status })
     setLeads((current) => current.map((lead) => lead.id === id ? { ...lead, status } : lead))
@@ -108,7 +108,7 @@ export function LeadsPage() {
 
   const deleteLead = async (id: string) => {
     const lead = leads.find((item) => item.id === id)
-    const { error: deleteError } = await supabase.from('leads').delete().eq('id', id)
+    const { error: deleteError } = await dataClient.from('leads').delete().eq('id', id)
     if (deleteError) { setError(deleteError.message); return }
     await logAction('lead.deleted', id, { contact_name: lead?.contact_name ?? 'unknown' })
     setLeads((current) => current.filter((item) => item.id !== id))
@@ -136,7 +136,7 @@ export function LeadsPage() {
             <td className="px-5 py-4 font-semibold text-neutral-700">${Number(lead.estimated_value).toLocaleString()}</td>
             <td className="px-5 py-4"><select value={lead.status} onChange={(event) => void updateStatus(lead.id, event.target.value as LeadStatus)} className="cursor-pointer border-0 bg-transparent p-0 text-xs focus:ring-0"><option value="Hot">Hot</option><option value="Warm">Warm</option><option value="Cold">Cold</option></select><div className="mt-1"><StatusBadge status={lead.status}/></div></td>
             <td className="px-5 py-4 text-xs text-neutral-500">{new Date(lead.created_at).toLocaleDateString()}</td>
-            <td className="px-5 py-4"><div className="flex items-center gap-2"><button onClick={() => void qualify(lead)} disabled={qualifyingId === lead.id || !supabaseConfigured} title={!supabaseConfigured ? 'Connect Supabase to enable AI' : 'Run AI qualification'} className="rounded-lg p-1.5 text-neutral-400 hover:bg-accent-50 hover:text-accent-700 disabled:cursor-not-allowed disabled:opacity-40">{qualifyingId === lead.id ? <span className="text-[10px]">AI…</span> : <Brain size={15}/>}</button><button onClick={() => openEdit(lead)} className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"><Pencil size={15}/></button><button onClick={() => void deleteLead(lead.id)} className="rounded-lg p-1.5 text-neutral-400 hover:bg-error-50 hover:text-error-600"><Trash2 size={15}/></button></div></td>
+            <td className="px-5 py-4"><div className="flex items-center gap-2"><button onClick={() => void qualify(lead)} disabled={qualifyingId === lead.id || !backendConfigured} title={!backendConfigured ? 'Connect dataClient to enable AI' : 'Run AI qualification'} className="rounded-lg p-1.5 text-neutral-400 hover:bg-accent-50 hover:text-accent-700 disabled:cursor-not-allowed disabled:opacity-40">{qualifyingId === lead.id ? <span className="text-[10px]">AI…</span> : <Brain size={15}/>}</button><button onClick={() => openEdit(lead)} className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"><Pencil size={15}/></button><button onClick={() => void deleteLead(lead.id)} className="rounded-lg p-1.5 text-neutral-400 hover:bg-error-50 hover:text-error-600"><Trash2 size={15}/></button></div></td>
           </tr>)}
         </tbody></table></div>
     </div>
@@ -153,3 +153,6 @@ export function LeadsPage() {
     </Modal>}
   </div>
 }
+
+
+

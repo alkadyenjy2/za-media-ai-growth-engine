@@ -137,3 +137,6 @@ export interface IncomeRecord {
   transaction_date: string
   created_at: string
 }
+
+
+

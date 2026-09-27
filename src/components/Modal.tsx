@@ -9,3 +9,6 @@ export function Modal({ title, children, onClose }: { title: string; children: R
     </div>
   </div>
 }
+
+
+

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ArrowRight, Sparkles } from '../lib/icons'
-import { supabase } from '../lib/supabase'
+import { dataClient } from '../lib/backend'
 import { qualifyDemoLead, type DemoQualification } from '../lib/demoQualification'
 import { trackZaEvent } from '../lib/analytics'
 
@@ -48,7 +48,7 @@ export function ZaCoreDemoPage({ onBack }: { onBack: () => void }) {
       setSaving(false)
       return
     }
-    const { error: saveError } = await supabase.from('leads').insert({
+    const { error: saveError } = await dataClient.from('leads').insert({
       full_name: form.full_name,
       email: form.email,
       phone: form.phone,
@@ -63,7 +63,7 @@ export function ZaCoreDemoPage({ onBack }: { onBack: () => void }) {
       setSaving(false)
       return
     }
-    await supabase.from('audit_logs').insert({
+    await dataClient.from('audit_logs').insert({
       action: 'marketing_plan_requested',
       entity_type: 'lead',
       actor: 'website',
@@ -126,3 +126,6 @@ export function ZaCoreDemoPage({ onBack }: { onBack: () => void }) {
     </div>
   </div>
 }
+
+
+

@@ -7,3 +7,8 @@ coverage/
 *.tsbuildinfo
 .env*
 !.env.example
+.convex-deploy-key
+.better-auth-secret
+
+.vercel
+.env*

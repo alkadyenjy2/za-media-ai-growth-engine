@@ -1,6 +1,6 @@
 import { ArrowRight, Brain, ChartLine, Clock, Search, Sparkles, Target, TrendingUp, Users, Zap } from '../lib/icons'
 import { useState, type FormEvent } from 'react'
-import { supabase } from '../lib/supabase'
+import { dataClient } from '../lib/backend'
 
 const problems = [
   { icon: Users, title: 'Leads falling through the cracks', desc: 'Prospects contact you but nobody follows up in time.' },
@@ -44,12 +44,12 @@ export function LandingPage({ onEnterDashboard, initialOpen = false }: { onEnter
 
   const submit = async (e: FormEvent) => {
     e.preventDefault(); setSaving(true); setError('')
-    const { error: saveError } = await supabase.from('leads').insert({
+    const { error: saveError } = await dataClient.from('leads').insert({
       full_name: form.full_name, email: form.email, phone: form.phone, source: 'Website',
       project_type: 'Marketing Strategy & Planning', estimated_value: 0, status: 'new', score: 50,
     })
     if (saveError) { setError(saveError.message); setSaving(false); return }
-    await supabase.from('audit_logs').insert({ action: 'marketing_plan_requested', entity_type: 'lead', actor: 'website', details: { source: 'landing_page', name: form.full_name, company: form.company, requested_service: 'Marketing Strategy & Planning' } })
+    await dataClient.from('audit_logs').insert({ action: 'marketing_plan_requested', entity_type: 'lead', actor: 'website', details: { source: 'landing_page', name: form.full_name, company: form.company, requested_service: 'Marketing Strategy & Planning' } })
     setSubmitted(true); setSaving(false)
   }
 
@@ -84,3 +84,6 @@ export function LandingPage({ onEnterDashboard, initialOpen = false }: { onEnter
     {showForm && <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/60 p-4 backdrop-blur-sm" onMouseDown={() => setShowForm(false)}><div className="w-full max-w-md animate-slide-up rounded-2xl border border-white/10 bg-neutral-900 p-8 shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>{submitted ? <div className="text-center"><div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-accent-500/20 text-accent-400"><Sparkles size={28}/></div><h3 className="font-display text-xl font-bold">Marketing plan requested!</h3><p className="mt-2 text-sm text-neutral-400">Your request is in the ZA Media lead pipeline for marketing strategy and planning.</p><button onClick={() => { setShowForm(false); setSubmitted(false); setForm({ full_name: '', email: '', phone: '', company: '' }) }} className="btn-secondary mt-6 w-full">Done</button></div> : <><div className="mb-6"><h3 className="font-display text-xl font-bold">Start your marketing plan</h3><p className="mt-1 text-sm text-neutral-400">Tell us who you are and we will start with strategy, positioning, and campaign planning.</p></div><form onSubmit={submit} className="space-y-4"><div><label className="mb-1.5 block text-xs font-semibold text-neutral-400">Full name *</label><input className="input bg-white/5 border-white/10 text-white placeholder:text-neutral-600" required value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })}/></div><div><label className="mb-1.5 block text-xs font-semibold text-neutral-400">Email *</label><input type="email" className="input bg-white/5 border-white/10 text-white placeholder:text-neutral-600" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}/></div><div><label className="mb-1.5 block text-xs font-semibold text-neutral-400">Phone</label><input className="input bg-white/5 border-white/10 text-white placeholder:text-neutral-600" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })}/></div><div><label className="mb-1.5 block text-xs font-semibold text-neutral-400">Company name</label><input className="input bg-white/5 border-white/10 text-white placeholder:text-neutral-600" value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })}/></div>{error && <p className="text-sm text-error-400">{error}</p>}<button className="btn-primary w-full" disabled={saving}>{saving ? 'Submitting...' : 'Request marketing plan'}</button></form></>}</div></div>}
   </div>
 }
+
+
+

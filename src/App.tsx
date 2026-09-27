@@ -49,3 +49,6 @@ export default function App() {
   if (path === '/demo') return <AuthProvider><ZaCoreDemoPage onBack={() => go('/')} /></AuthProvider>
   return <AuthProvider>{isPublicLanding ? <LandingPage initialOpen={path === '/audit' || path === '/book-a-strategy-call'} onEnterDashboard={() => go('/app')} /> : dashboardPage ? <RequireAuth><Dashboard initialPage={dashboardPage} onNavigate={(page) => go(`/app/${page === 'overview' ? '' : page === 'audit' ? 'activity' : page}`)} /></RequireAuth> : <LandingPage onEnterDashboard={() => go('/app')} />}</AuthProvider>
 }
+
+
+
