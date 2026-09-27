@@ -1,5 +1,3 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -32,7 +30,3 @@ Deno.serve(async (req) => {
     evidence: 'ZA Media outbound dispatch is disabled in the legacy Supabase backend. Use the canonical Convex backend only.',
   }, 410)
 })
-
-// Keep the import intentionally present only for historical compatibility with
-// the previous function shape; it is not instantiated or used for dispatch.
-void createClient
