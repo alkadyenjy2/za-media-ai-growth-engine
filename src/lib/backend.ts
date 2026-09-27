@@ -112,7 +112,7 @@ export const dataClient = {
           })
           return { data: { ok: true, result, audit_id: audit }, error: null }
         }
-        if (name === 'ai-qualify') {
+        if (name === 'outreach-approve') {`r`n          const result = await convex.mutation(api.outreach.approve, { outreach_event_id: String(options?.body?.outreach_event_id), reason: String(options?.body?.reason ?? 'Approved from ZA Media workspace') })`r`n          return { data: result, error: null }`r`n        }`r`n        if (name === 'outreach-send') {`r`n          const result = await convex.action(api.outreach.send, { outreach_event_id: String(options?.body?.outreach_event_id) })`r`n          return { data: result, error: result?.ok ? null : new Error(result?.reason ?? 'Outreach send blocked') }`r`n        }`r`n        if (name === 'ai-qualify') {
           const result = await convex.action(api.ai.qualifyLead, { lead: options?.body?.lead })
           return { data: { ok: true, result }, error: null }
         }
@@ -127,6 +127,7 @@ export const dataClient = {
     signOut: async () => ({ error: null }),
   },
 }
+
 
 
 
