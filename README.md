@@ -6,7 +6,7 @@
 
 ## Overview
 
-ZA Media AI Growth Engine is a React/TypeScript application with a Supabase-backed operations layer. The public repository documents an implementation that brings together product surfaces, AI-assisted qualification and audit flows, prospect and website intelligence, scoring, service matching, opportunity workflows, and workspace-oriented operations.
+ZA Media AI Growth Engine is a React/TypeScript application with a Convex-backed operations layer. The public repository documents an implementation that brings together product surfaces, AI-assisted qualification and audit flows, prospect and website intelligence, scoring, service matching, opportunity workflows, and workspace-oriented operations.
 
 This repository is presented as an **engineering case study**. The code and repository history are evidence of implementation work; they are not, by themselves, evidence of revenue, ROI, customer count, or commercial outcomes.
 
@@ -20,7 +20,7 @@ The current repository contains implementation work across:
 - Prospect monitoring, scoring, intent, opportunity, and service-matching logic.
 - Personalized outreach generation.
 - CRM/workspace-oriented product surfaces.
-- Authentication and workspace boundaries backed by Supabase.
+- Authentication and workspace boundaries backed by Convex.
 - Product identity, design tokens, and reusable brand assets.
 
 ## Repository structure
@@ -44,8 +44,8 @@ The repository's `package.json` directly identifies the following stack:
 - TypeScript 5.7
 - Vite 6
 - Tailwind CSS 3
-- Supabase JavaScript client
-- Supabase Edge Functions / Deno runtime code
+- Convex runtime and HTTP actions
+- Convex Auth / Better Auth integration
 - Recharts
 - Lucide React
 
@@ -69,14 +69,14 @@ The public codebase includes work on:
 
 The public implementation history includes work on multiple server-side AI and intelligence functions, including qualification, audit, prospect monitoring, meta prospecting, scoring, social intelligence, intent, outreach, geo intelligence, service matching, opportunity processing, and website intelligence.
 
-The repository also separates application code, Supabase infrastructure, documentation, brand assets, and deployment configuration rather than presenting the project as a single undifferentiated prototype.
+The repository also separates application code, Convex infrastructure, documentation, brand assets, and deployment configuration rather than presenting the project as a single undifferentiated prototype.
 
 ## Evidence boundaries
 
 ### What GitHub proves
 
 - The repository is public and contains the implementation and documentation described above.
-- The application is structured around React/TypeScript/Vite with Supabase integration.
+- The application is structured around React/TypeScript/Vite with Convex integration.
 - AI and intelligence functions exist in the repository and use environment-based server configuration.
 - The repository contains explicit product identity documentation and deployment configuration.
 
@@ -128,4 +128,4 @@ The repository documents the architecture and implementation boundaries that can
 
 ## Security note
 
-Server credentials such as `GEMINI_API_KEY`, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY` are read from environment variables by server-side functions. The repository's `.gitignore` excludes `.env*` files by default, with `.env.example` explicitly allowed.
+Server credentials are read from environment variables by server-side functions; the Convex runtime owns server-side provider configuration. The repository's `.gitignore` excludes `.env*` files by default, with `.env.example` explicitly allowed.
