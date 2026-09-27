@@ -83,7 +83,7 @@ export const webhook = httpAction(async (ctx, request) => {
   if (request.method === "GET") {
     const url = new URL(request.url);
     const verifyToken = process.env.META_VERIFY_TOKEN;
-    if (!verifyToken) return new Response("META_VERIFY_TOKEN not configured", { status: 500 });
+    if (!verifyToken) return new Response("META_VERIFY_TOKEN not configured", { status: 503 });
     if (url.searchParams.get("hub.mode") !== "subscribe" || url.searchParams.get("hub.verify_token") !== verifyToken) {
       return new Response("Forbidden", { status: 403 });
     }
@@ -94,7 +94,7 @@ export const webhook = httpAction(async (ctx, request) => {
   if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
 
   const appSecret = process.env.META_APP_SECRET;
-  if (!appSecret) return new Response("META_APP_SECRET not configured", { status: 500 });
+  if (!appSecret) return new Response("META_APP_SECRET not configured", { status: 503 });
 
   const rawBody = await request.text();
   const signature = request.headers.get("x-hub-signature-256") ?? "";
