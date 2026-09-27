@@ -26,7 +26,8 @@ The current repository contains implementation work across:
 ```text
 .github/workflows/   CI / automation configuration
 src/                 React + TypeScript application code
-supabase/            Supabase configuration, migrations, and Edge Functions
+convex/               Canonical Convex backend, schema, actions, mutations, and HTTP routes
+supabase/             Legacy Supabase source retained for historical reference only
 docs/                Product and engineering documentation
 public/brand/        Canonical product identity assets
 index.html           Vite application entry
