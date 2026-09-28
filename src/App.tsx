@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Layout } from './components/Layout'
 import type { PageKey } from './components/Sidebar'
 import { LandingPage } from './pages/LandingPage'
-import { ZaCoreDemoPage } from './pages/ZaCoreDemoPage'
 import { OverviewPage } from './pages/OverviewPage'
 import { LeadsPage } from './pages/LeadsPage'
 import { ConversationsPage } from './pages/ConversationsPage'
@@ -38,7 +37,7 @@ export default function App() {
       if (button && (label.includes('Build my growth plan') || label.includes('Start a plan'))) {
         event.preventDefault()
         event.stopPropagation()
-        go('/demo')
+        go('/audit')
       }
     }
     document.addEventListener('click', onDemoCta, true)
@@ -46,9 +45,5 @@ export default function App() {
   })
   const dashboardPage = dashboardPages[path]
   const isPublicLanding = path === '/' || path === '/services' || path.startsWith('/services/') || path === '/audit' || path === '/book-a-strategy-call'
-  if (path === '/demo') return <AuthProvider><ZaCoreDemoPage onBack={() => go('/')} /></AuthProvider>
   return <AuthProvider>{isPublicLanding ? <LandingPage initialOpen={path === '/audit' || path === '/book-a-strategy-call'} onEnterDashboard={() => go('/app')} /> : dashboardPage ? <RequireAuth><Dashboard initialPage={dashboardPage} onNavigate={(page) => go(`/app/${page === 'overview' ? '' : page === 'audit' ? 'activity' : page}`)} /></RequireAuth> : <LandingPage onEnterDashboard={() => go('/app')} />}</AuthProvider>
 }
-
-
-
