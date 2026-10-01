@@ -1,0 +1,12 @@
+# ZA Media — Canonical Audit 2026-10-01
+- Repo exists and canonical: alkadyenjy2/za-media-ai-growth-engine.
+- No open PRs returned by GitHub search.
+- Latest observed commit: 99fe2fa067bf1f54a0eb8d05d50c4be8ad99170b (2026-08-07).
+- No GitHub workflow run/status evidence was returned for that commit.
+- Architecture contract is Convex ONLY; no Supabase runtime.
+- Production webhook and Meta/outreach are evidence-gated in the canonical handoff.
+- Fresh runtime/Convex deployment evidence was not available through the connected tools in this pass.
+- Meta identity/token/Page/Lead Ads E2E remains UNVERIFIED.
+- Authenticated priority mapping E2E remains UNVERIFIED.
+- Outbound remains frozen; no outreach was sent.
+- No production code/credentials/backend changes made.
