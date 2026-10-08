@@ -10,6 +10,10 @@ if (/import\\s*\\{?\\s*dataClient\\b/.test(landing)) {
 if (!http.includes('path: "/public-lead"') || !http.includes('handler: publicLeadSubmit')) {
   throw new Error('Convex HTTP router must expose the public-lead handler');
 }
+const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+if (!pkg.scripts.build?.includes('codegen:convex') || !pkg.scripts.typecheck?.includes('codegen:convex')) {
+  throw new Error('Build and typecheck must generate Convex API bindings before TypeScript compilation');
+}
 if (!publicLead.includes('export const submit = httpAction')) {
   throw new Error('publicLead must expose the public HTTP action');
 }
