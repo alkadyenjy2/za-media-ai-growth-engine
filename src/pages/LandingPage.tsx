@@ -44,13 +44,20 @@ export function LandingPage({ onEnterDashboard, initialOpen = false }: { onEnter
 
   const submit = async (e: FormEvent) => {
     e.preventDefault(); setSaving(true); setError('')
-    const { error: saveError } = await dataClient.from('leads').insert({
-      full_name: form.full_name, email: form.email, phone: form.phone, source: 'Website',
-      project_type: 'Marketing Strategy & Planning', estimated_value: 0, status: 'new', score: 50,
-    })
-    if (saveError) { setError(saveError.message); setSaving(false); return }
-    await dataClient.from('audit_logs').insert({ action: 'marketing_plan_requested', entity_type: 'lead', actor: 'website', details: { source: 'landing_page', name: form.full_name, company: form.company, requested_service: 'Marketing Strategy & Planning' } })
-    setSubmitted(true); setSaving(false)
+    try {
+      const response = await fetch(import.meta.env.VITE_CONVEX_URL + '/public-lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Lead submission failed')
+      setSubmitted(true)
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Lead submission failed')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return <div className="min-h-screen bg-neutral-950 text-white">
