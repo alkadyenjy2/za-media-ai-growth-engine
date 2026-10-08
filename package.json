@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --noEmit",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:public-lead": "node scripts/verify-public-lead.mjs"
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.90",

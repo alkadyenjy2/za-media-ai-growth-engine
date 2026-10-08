@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { httpAction, internalMutation } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { anyApi } from "convex/server";
 
 const clean = (value: unknown, max = 500) => typeof value === "string" ? value.trim().slice(0, max) : "";
 const emailOk = (value: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value);
@@ -88,7 +88,7 @@ export const submit = httpAction(async (ctx, request) => {
   try { body = await request.json(); } catch { return new Response("Invalid JSON", { status: 400 }); }
   if (clean(body?.website, 200)) return Response.json({ ok: true });
   try {
-    const result = await ctx.runMutation(internal.publicLead.record, {
+    const result = await ctx.runMutation(anyApi.publicLead.record, {
       full_name: clean(body?.full_name, 120),
       email: clean(body?.email, 254),
       phone: clean(body?.phone, 80) || undefined,

@@ -1,6 +1,5 @@
 import { ArrowRight, Brain, ChartLine, Clock, Search, Sparkles, Target, TrendingUp, Users, Zap } from '../lib/icons'
 import { useState, type FormEvent } from 'react'
-import { dataClient } from '../lib/backend'
 
 const problems = [
   { icon: Users, title: 'Leads falling through the cracks', desc: 'Prospects contact you but nobody follows up in time.' },
