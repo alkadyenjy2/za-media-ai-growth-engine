@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "typecheck": "tsc -b --noEmit",
+    "build": "pnpm codegen:convex && tsc -b && vite build",
+    "typecheck": "pnpm codegen:convex && tsc -b --noEmit",
     "preview": "vite preview",
-    "test:public-lead": "node scripts/verify-public-lead.mjs"
+    "test:public-lead": "node scripts/verify-public-lead.mjs",
+    "codegen:convex": "convex codegen"
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.90",
