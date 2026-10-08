@@ -42,6 +42,9 @@ export const recordWebhook = internalMutation({
       return { ok: false, reason: "NO_VERIFIED_META_CONNECTION" };
     }
     if (BLOCKED_PAGE_IDS.has(args.page_id)) return { ok: false, reason: "BLOCKED_PAGE_ID" };
+    const existingLead = await ctx.db.query("leads").withIndex("by_idempotency", (q: any) => q.eq("idempotency_key", "meta:" + args.leadgen_id)).unique();
+    if (existingLead) return { ok: true, duplicate: true, lead_id: existingLead._id.toString() };
+
     const auditRows = await ctx.db.query("audit_logs").withIndex("by_workspace", (q: any) => q.eq("workspace_id", connection.workspace_id)).collect();
     const existing = auditRows.find((row: any) => row.action === "meta_webhook_received" && row.details?.leadgen_id === args.leadgen_id);
     if (existing) return { ok: true, duplicate: true, evidence_id: existing._id.toString() };
@@ -55,6 +58,7 @@ export const recordWebhook = internalMutation({
     const website = pick(fields, ["website", "company_website", "url"]);
     const industry = pick(fields, ["industry", "business_industry"]) || "unspecified";
     const country = pick(fields, ["country", "country_name", "location_country"]) || "unspecified";
+    const jobTitle = pick(fields, ["job_title", "title", "role"]);
     const now = new Date().toISOString();
 
     const evidenceId = await ctx.db.insert("audit_logs", { workspace_id: connection.workspace_id, action: "meta_webhook_received", entity_type: "meta_lead_evidence", actor: "meta-webhook", details: { leadgen_id: args.leadgen_id, page_id: args.page_id, form_id: args.form_id, created_time: args.created_time, raw_payload: args.raw_payload, retrieved_lead: lead, evidence_status: "received_signature_verified_and_retrieved", outreach_eligible: false }, created_at: now });
@@ -65,7 +69,7 @@ export const recordWebhook = internalMutation({
     }
 
     const companyId = await ctx.db.insert("companies", { workspace_id: connection.workspace_id, name: companyName, domain: website || undefined, industry, country, created_at: now, updated_at: now });
-    const contactId = await ctx.db.insert("contacts", { workspace_id: connection.workspace_id, company_id: companyId.toString(), full_name: fullName, email, phone, job_title: pick(fields, ["job_title", "title", "role"]) || "decision maker", is_decision_maker: true, linkedin_url: pick(fields, ["linkedin", "linkedin_url"]) || undefined, created_at: now });
+    const contactId = await ctx.db.insert("contacts", { workspace_id: connection.workspace_id, company_id: companyId.toString(), full_name: fullName, email, phone, job_title: jobTitle, is_decision_maker: true, linkedin_url: pick(fields, ["linkedin", "linkedin_url"]) || undefined, created_at: now });
     const leadId = await ctx.db.insert("leads", { workspace_id: connection.workspace_id, company_id: companyId.toString(), contact_id: contactId.toString(), idempotency_key: "meta:" + args.leadgen_id, contact_name: fullName, company_name: companyName, email, phone, source: "meta_leadgen", industry, monthly_budget: 0, estimated_value: 0, stage: "new", status: "qualified_pending_review", last_activity: now, notes: website ? "Website: " + website : undefined, assigned_agent: "za-meta-intake", automation_status: "evidence_verified_human_review_required", likes_count: 0, liked_by_me: false, created_at: now, updated_at: now });
     await ctx.db.insert("audit_logs", { workspace_id: connection.workspace_id, action: "meta_lead_promoted", entity_type: "lead", entity_id: leadId.toString(), actor: "meta-webhook", details: { leadgen_id: args.leadgen_id, evidence_id: evidenceId.toString(), outreach_eligible: false, reason: "retrieved_and_required_fields_present" }, created_at: now });
     return { ok: true, duplicate: false, evidence_id: evidenceId.toString(), promoted: true, lead_id: leadId.toString() };
