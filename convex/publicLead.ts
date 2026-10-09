@@ -20,7 +20,7 @@ export const record = internalMutation({
     if (!fullName || !emailOk(email)) throw new Error("Invalid lead details");
 
     const workspaces = await ctx.db.query("workspaces").collect();
-    const workspace = workspaces.find((row: any) => row.name === "ZA Media") ?? workspaces[0];
+    const workspace = workspaces.find((row: any) => row.name === "ZA Media");
     if (!workspace) throw new Error("ZA Media workspace is not initialized");
 
     const now = new Date().toISOString();
