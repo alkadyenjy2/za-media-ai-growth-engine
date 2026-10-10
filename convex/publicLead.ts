@@ -24,6 +24,15 @@ export const record = internalMutation({
     if (!workspace) throw new Error("ZA Media workspace is not initialized");
 
     const now = new Date().toISOString();
+    const idempotencyKey = "website:" + email + ":" + now.slice(0, 10);
+    const existingLead = await ctx.db
+      .query("leads")
+      .withIndex("by_idempotency", (q) => q.eq("idempotency_key", idempotencyKey))
+      .first();
+    if (existingLead) {
+      return { ok: true, duplicate: true, lead_id: existingLead._id.toString() };
+    }
+
     const companyId = await ctx.db.insert("companies", {
       workspace_id: workspace._id.toString(),
       name: companyName,
@@ -46,7 +55,7 @@ export const record = internalMutation({
       workspace_id: workspace._id.toString(),
       company_id: companyId.toString(),
       contact_id: contactId.toString(),
-      idempotency_key: "website:" + email + ":" + now.slice(0, 10),
+      idempotency_key: idempotencyKey,
       contact_name: fullName,
       company_name: companyName,
       email,
@@ -74,7 +83,7 @@ export const record = internalMutation({
       details: { source: "landing_page", email, requested_service: "Marketing Strategy & Planning" },
       created_at: now,
     });
-    return { ok: true, lead_id: leadId.toString() };
+    return { ok: true, duplicate: false, lead_id: leadId.toString() };
   },
 });
 
@@ -94,7 +103,7 @@ export const submit = httpAction(async (ctx, request) => {
       phone: clean(body?.phone, 80) || undefined,
       company: clean(body?.company, 160) || undefined,
     });
-    return Response.json(result, { status: 201 });
+    return Response.json(result, { status: result.duplicate ? 200 : 201 });
   } catch (error) {
     return Response.json({ ok: false, error: error instanceof Error ? error.message : "Lead intake failed" }, { status: 400 });
   }
