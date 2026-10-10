@@ -7,6 +7,9 @@ const http = readFileSync(new URL('../convex/http.ts', import.meta.url), 'utf8')
 if (/import\s*\{?\s*dataClient\b/.test(landing)) {
   throw new Error('LandingPage must not import the unused legacy dataClient');
 }
+if (!http.includes('path: "/health"') || !http.includes('handler: health')) {
+  throw new Error('Convex HTTP router must expose the health liveness handler');
+}
 if (!http.includes('path: "/public-lead"') || !http.includes('handler: publicLeadSubmit')) {
   throw new Error('Convex HTTP router must expose the public-lead handler');
 }
@@ -20,4 +23,4 @@ if (!publicLead.includes('if (!workspace) throw new Error("ZA Media workspace is
   throw new Error('Public lead intake must fail closed when the ZA Media workspace is missing');
 }
 
-console.log('public-lead regression checks passed');
+console.log('public-lead and health regression checks passed');
