@@ -20,4 +20,11 @@ if (!publicLead.includes('if (!workspace) throw new Error("ZA Media workspace is
   throw new Error('Public lead intake must fail closed when the ZA Media workspace is missing');
 }
 
+if (!publicLead.includes('withIndex("by_idempotency"') || !publicLead.includes('duplicate: true')) {
+  throw new Error('Public lead intake must suppress duplicate daily email submissions before creating records');
+}
+if (!publicLead.includes('result.duplicate ? 200 : 201')) {
+  throw new Error('Public lead intake must return HTTP 200 for an idempotently suppressed duplicate');
+}
+
 console.log('public-lead regression checks passed');
