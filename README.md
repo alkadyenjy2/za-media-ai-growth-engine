@@ -40,7 +40,7 @@ tsconfig.json        TypeScript application configuration
 tsconfig.node.json   TypeScript tooling configuration
 vercel.json          SPA deployment rewrite configuration
 vite.config.ts       Vite configuration
-````
+```
 
 ## Technical foundation
 
