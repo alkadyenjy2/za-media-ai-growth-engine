@@ -22,17 +22,24 @@ The current repository contains implementation work across:
 - Product identity, design tokens, and reusable brand assets.
 
 ## Repository structure
-
 ```text
 .github/workflows/   CI / automation configuration
 src/                 React + TypeScript application code
-convex/               Canonical Convex backend, schema, actions, mutations, and HTTP routes
-supabase/             Legacy Supabase source retained for historical reference only
+convex/              Canonical Convex backend, schema, actions, mutations, and HTTP routes
+supabase/            Legacy Supabase source retained for historical reference only
 docs/                Product and engineering documentation
-public/brand/        Canonical product identity assets
+public/              Static public assets, including the canonical brand assets
+scripts/             Repository helper scripts
 index.html           Vite application entry
 package.json         Runtime and development dependencies/scripts
+package-lock.json    npm dependency lockfile
+pnpm-lock.yaml       pnpm dependency lockfile
+postcss.config.js    PostCSS configuration
+tailwind.config.js   Tailwind configuration
+tsconfig.json        TypeScript application configuration
+tsconfig.node.json   TypeScript tooling configuration
 vercel.json          SPA deployment rewrite configuration
+vite.config.ts       Vite configuration
 ```
 
 ## Technical foundation
