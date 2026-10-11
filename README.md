@@ -28,21 +28,19 @@ src/                 React + TypeScript application code
 convex/              Canonical Convex backend, schema, actions, mutations, and HTTP routes
 supabase/            Legacy Supabase source retained for historical reference only
 docs/                Product and engineering documentation
-public/brand/        Canonical product identity assets
+public/              Static public assets, including the canonical brand assets
+scripts/             Repository helper scripts
 index.html           Vite application entry
-package-lock.json    Runtime and development dependencies/scripts
 package.json         Runtime and development dependencies/scripts
-pnpm-lock.yaml       Runtime and development dependencies/scripts
-postcss.config.js    
-public/              
-scripts/             
-supabase/            
-tailwind.config.js   
-tsconfig.json        
-tsconfig.node.json   
+package-lock.json    npm dependency lockfile
+pnpm-lock.yaml       pnpm dependency lockfile
+postcss.config.js    PostCSS configuration
+tailwind.config.js   Tailwind configuration
+tsconfig.json        TypeScript application configuration
+tsconfig.node.json   TypeScript tooling configuration
 vercel.json          SPA deployment rewrite configuration
-vite.config.ts       
-```
+vite.config.ts       Vite configuration
+````
 
 ## Technical foundation
 
@@ -125,7 +123,7 @@ npm run preview
 
 ## Status
 
-***Public engineering case study with an active implementation history.***
+**Public engineering case study with an active implementation history.**
 
 Production outbound actions are intentionally fail-closed while external credentials and authenticated integration evidence are unavailable. No repository code alone is treated as proof of successful external execution.
 
