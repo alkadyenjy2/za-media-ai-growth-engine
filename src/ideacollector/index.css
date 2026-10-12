@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body { font-family:'Inter','Cairo',sans-serif; background:#050508; color:white; margin:0; -webkit-font-smoothing:antialiased; }
+  * { border-color:rgba(255,255,255,.1); }
+}
+@layer components {
+  .glass { @apply bg-white/[0.03] backdrop-blur border border-white/10; }
+  .bento-card { @apply rounded-[24px] glass p-6 hover:border-white/20 transition-all duration-300; }
+}
+@layer utilities {
+  .animate-in { animation:animateIn .3s ease-out; }
+  @keyframes animateIn { from {opacity:0;transform:translateY(10px)} to {opacity:1;transform:translateY(0)} }
+}
