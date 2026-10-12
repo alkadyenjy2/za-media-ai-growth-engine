@@ -46,12 +46,6 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Configure production auth URLs
-        env:
-          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
-        run: |
-          pnpm exec convex env set SITE_URL https://za-media-ai-growth-engine.pages.dev
-          pnpm exec convex env set CONVEX_SITE_URL https://qualified-nightingale-421.eu-west-1.convex.site
       - name: Deploy production backend
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
