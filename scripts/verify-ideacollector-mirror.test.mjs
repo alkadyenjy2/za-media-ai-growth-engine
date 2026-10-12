@@ -76,7 +76,7 @@ test('redirects to known Vercel aliases stay on the Cloudflare mirror', async ()
     status: 302,
     headers: { location: 'https://ideacollector-iota.vercel.app/login?next=%2Fapp' },
   }), async () => {
-    const request = new Request('https://cloudflare-ideacollector-mirror-preview.pages.dev/auth')
+    const request = new Request('https://cloudflare-ideacollector-mirror-preview.pages.dev/api/auth')
     const response = await worker.fetch(request)
     assert.equal(
       response.headers.get('location'),
