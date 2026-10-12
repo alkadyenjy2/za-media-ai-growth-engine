@@ -1,6 +1,6 @@
 name: Convex Production Deploy
 
-on:
+"on":
   workflow_dispatch:
   push:
     branches:
