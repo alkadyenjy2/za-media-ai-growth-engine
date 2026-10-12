@@ -1,7 +1,7 @@
 name: Convex Production Deploy
 
-"on":
-  workflow_dispatch: {}
+on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -48,4 +48,5 @@ jobs:
       - name: Deploy production backend
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
-        run: pnpm exec convex deploy --typecheck enable --message "GitHub Actions production deploy: ${GITHUB_SHA}"
+        run: |
+          pnpm exec convex deploy --typecheck enable --message "GitHub Actions production deploy: ${GITHUB_SHA}"
