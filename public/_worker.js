@@ -25,8 +25,23 @@ function rewriteRedirect(location, requestOrigin) {
 }
 
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     const incoming = new URL(request.url)
+    const isApiRequest = incoming.pathname === '/api' || incoming.pathname.startsWith('/api/')
+
+    // Serve the Vite-built IdeaCollector frontend from Cloudflare Pages assets.
+    // Only the /api namespace is sent to the existing application API upstream.
+    if (!isApiRequest) {
+      const assetResponse = await env.ASSETS.fetch(request)
+      const assetHeaders = new Headers(assetResponse.headers)
+      assetHeaders.set('x-ideacollector-host', 'cloudflare-pages-assets')
+      return new Response(assetResponse.body, {
+        status: assetResponse.status,
+        statusText: assetResponse.statusText,
+        headers: assetHeaders,
+      })
+    }
+
     const upstream = new URL(incoming.pathname + incoming.search, UPSTREAM_ORIGIN)
     const method = request.method.toUpperCase()
 
