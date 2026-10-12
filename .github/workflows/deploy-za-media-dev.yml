@@ -34,7 +34,7 @@ jobs:
       - name: Validate that the key is scoped to the requested development deployment
         shell: bash
         env:
-          CONVEX_DEPLOY_KEY: ${{ secrets.ZA_MEDIA_DEV_CONVEX_DEPLOY_KEY }}
+          CONVEX_DEPLOY_KEY: ${{ secrets.ZA_MEDIA_DEV_CONVEX_DEPLOY_KEY || secrets.CONVEX_DEV_DEPLOY_KEY || secrets.CONVEX_DEPLOY_KEY }}
         run: |
           case "${CONVEX_DEPLOY_KEY:-}" in
             'dev:rosy-hare-228|'*)
@@ -49,7 +49,7 @@ jobs:
       - name: Create Better Auth secret only if not already configured
         shell: bash
         env:
-          CONVEX_DEPLOY_KEY: ${{ secrets.ZA_MEDIA_DEV_CONVEX_DEPLOY_KEY }}
+          CONVEX_DEPLOY_KEY: ${{ secrets.ZA_MEDIA_DEV_CONVEX_DEPLOY_KEY || secrets.CONVEX_DEV_DEPLOY_KEY || secrets.CONVEX_DEPLOY_KEY }}
         run: |
           if pnpm exec convex env get BETTER_AUTH_SECRET >/dev/null 2>&1; then
             echo "BETTER_AUTH_SECRET is already configured; retaining it."
@@ -63,7 +63,7 @@ jobs:
       - name: Set the allowed Preview origin
         shell: bash
         env:
-          CONVEX_DEPLOY_KEY: ${{ secrets.ZA_MEDIA_DEV_CONVEX_DEPLOY_KEY }}
+          CONVEX_DEPLOY_KEY: ${{ secrets.ZA_MEDIA_DEV_CONVEX_DEPLOY_KEY || secrets.CONVEX_DEV_DEPLOY_KEY || secrets.CONVEX_DEPLOY_KEY }}
         run: |
           preview_origin="$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('preview-deployment.json', 'utf8')).siteUrl)")"
           test -n "$preview_origin"
@@ -71,7 +71,7 @@ jobs:
 
       - name: Deploy the Convex functions to the scoped development deployment
         env:
-          CONVEX_DEPLOY_KEY: ${{ secrets.ZA_MEDIA_DEV_CONVEX_DEPLOY_KEY }}
+          CONVEX_DEPLOY_KEY: ${{ secrets.ZA_MEDIA_DEV_CONVEX_DEPLOY_KEY || secrets.CONVEX_DEV_DEPLOY_KEY || secrets.CONVEX_DEPLOY_KEY }}
         run: pnpm exec convex dev --once
 
       - name: Enable the branch-only frontend endpoints after backend deploy succeeds
