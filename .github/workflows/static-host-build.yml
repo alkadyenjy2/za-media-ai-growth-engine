@@ -1,0 +1,47 @@
+name: Static Host Build
+
+on:
+  pull_request:
+    paths:
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "vite.config.ts"
+      - "render.yaml"
+      - "preview-deployment.json"
+      - "scripts/preview-build-env.mjs"
+      - "src/**"
+      - ".github/workflows/static-host-build.yml"
+      - ".github/workflows/deploy-za-media-dev.yml"
+  push:
+    branches:
+      - main
+      - chore/za-static-host-fallback-20261012
+    paths:
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "vite.config.ts"
+      - "render.yaml"
+      - "preview-deployment.json"
+      - "scripts/preview-build-env.mjs"
+      - "src/**"
+      - ".github/workflows/static-host-build.yml"
+      - ".github/workflows/deploy-za-media-dev.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build static frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
