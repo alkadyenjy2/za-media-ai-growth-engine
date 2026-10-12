@@ -7,8 +7,11 @@ on:
       - "pnpm-lock.yaml"
       - "vite.config.ts"
       - "render.yaml"
+      - "preview-deployment.json"
+      - "scripts/preview-build-env.mjs"
       - "src/**"
       - ".github/workflows/static-host-build.yml"
+      - ".github/workflows/deploy-za-media-dev.yml"
   push:
     branches:
       - main
@@ -18,8 +21,11 @@ on:
       - "pnpm-lock.yaml"
       - "vite.config.ts"
       - "render.yaml"
+      - "preview-deployment.json"
+      - "scripts/preview-build-env.mjs"
       - "src/**"
       - ".github/workflows/static-host-build.yml"
+      - ".github/workflows/deploy-za-media-dev.yml"
 
 permissions:
   contents: read
