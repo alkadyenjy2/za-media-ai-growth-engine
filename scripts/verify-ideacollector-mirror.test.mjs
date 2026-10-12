@@ -97,3 +97,27 @@ test('mirror rejects oversized request bodies before contacting upstream', async
     assert.equal(called, false)
   })
 })
+
+
+test('non-API routes are served by Cloudflare static assets, not the Vercel upstream', async () => {
+  let upstreamCalled = false
+  await withFetch(async () => {
+    upstreamCalled = true
+    return new Response('upstream should not be used for static assets')
+  }, async () => {
+    const request = new Request('https://cloudflare-ideacollector-mir.za-media-ai-growth-engine.pages.dev/')
+    const response = await worker.fetch(request, {
+      ASSETS: { fetch: async assetRequest => {
+        assert.equal(new URL(assetRequest.url).pathname, '/')
+        return new Response('<!doctype html><title>IdeaCollector Static</title>', {
+          status: 200,
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+        })
+      } },
+    })
+    assert.equal(upstreamCalled, false)
+    assert.equal(response.status, 200)
+    assert.equal(response.headers.get('x-ideacollector-host'), 'cloudflare-pages-assets')
+    assert.match(await response.text(), /IdeaCollector Static/)
+  })
+})
