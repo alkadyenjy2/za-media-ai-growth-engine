@@ -12,9 +12,10 @@ const siteUrl = process.env.SITE_URL;
 const convexSiteUrl =
   process.env.CONVEX_SITE_URL ??
   "https://qualified-nightingale-421.eu-west-1.convex.site";
-const trustedOrigins = [...new Set([productionSiteUrl, siteUrl].filter(
-  (origin): origin is string => Boolean(origin),
-))];
+const trustedOrigins =
+  siteUrl && siteUrl !== productionSiteUrl
+    ? [productionSiteUrl, siteUrl]
+    : [productionSiteUrl];
 
 export const authComponent = createClient<DataModel>(components.betterAuth);
 
