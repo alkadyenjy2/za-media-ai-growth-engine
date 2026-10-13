@@ -38,8 +38,14 @@ class QueryBuilder implements PromiseLike<any> {
   single() { return this }
   maybeSingle() { return this }
 
-  async then(resolve: (value: any) => any, reject?: (reason: any) => any) {
-    try { return resolve(await this.execute()) } catch (error) { if (reject) return reject(error); throw error }
+  async then(resolve: (value: any) => any, _reject?: (reason: any) => any) {
+    // Keep the Supabase-style { data, error } contract used by every page.
+    // Convex failures should become visible form errors, not unhandled rejections
+    // that leave submit buttons stuck in their loading state.
+    try { return resolve(await this.execute()) } catch (error) {
+      const normalized = error instanceof Error ? error : new Error(String(error));
+      return resolve({ data: null, error: normalized, count: 0 });
+    }
   }
 
   private async execute() {
