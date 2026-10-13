@@ -38,8 +38,16 @@ export const record = internalMutation({
     if (!fullName || !emailOk(email)) throw new Error("Invalid lead details");
 
     const workspaces = await ctx.db.query("workspaces").collect();
-    const workspace = workspaces.find((row: any) => row.name === "ZA Media");
-    if (!workspace) throw new Error("ZA Media workspace is not initialized");
+    const configuredWorkspaceId = process.env.PUBLIC_LEAD_WORKSPACE_ID;
+    const matches = configuredWorkspaceId
+      ? workspaces.filter((row: any) => row._id.toString() === configuredWorkspaceId)
+      : workspaces.filter((row: any) => row.name === "ZA Media");
+    if (matches.length !== 1) {
+      throw new Error(matches.length === 0
+        ? "ZA Media workspace is not initialized"
+        : "Public lead workspace is ambiguous; configure PUBLIC_LEAD_WORKSPACE_ID");
+    }
+    const workspace = matches[0];
 
     const now = new Date().toISOString();
     const idempotencyKey = "website:" + email + ":" + now.slice(0, 10);
