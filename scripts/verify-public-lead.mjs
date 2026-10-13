@@ -31,6 +31,9 @@ if (!publicLead.includes('Access-Control-Allow-Origin') ||
 if (/workspaces\.find\([^\n]+\)\s*\?\?\s*workspaces\[0\]/.test(publicLead)) {
   throw new Error('Public lead intake must not fall back to an arbitrary workspace');
 }
+if (!publicLead.includes('PUBLIC_LEAD_WORKSPACE_ID') || !publicLead.includes('matches.length !== 1')) {
+  throw new Error('Public lead intake must target an explicit workspace or fail closed when workspace selection is ambiguous');
+}
 if (!publicLead.includes('if (!workspace) throw new Error("ZA Media workspace is not initialized")')) {
   throw new Error('Public lead intake must fail closed when the ZA Media workspace is missing');
 }
