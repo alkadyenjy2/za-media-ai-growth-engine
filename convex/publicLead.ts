@@ -116,7 +116,6 @@ export const submit = httpAction(async (ctx, request) => {
   if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
   if (origin && !originAllowed) return new Response("Forbidden", { status: 403 });
 
-  const cors = leadCorsHeaders(origin);
   let body: any;
   try {
     body = await request.json();
