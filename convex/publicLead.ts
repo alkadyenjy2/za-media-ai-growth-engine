@@ -4,6 +4,24 @@ import { anyApi } from "convex/server";
 
 const clean = (value: unknown, max = 500) => typeof value === "string" ? value.trim().slice(0, max) : "";
 const emailOk = (value: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value);
+const ALLOWED_PUBLIC_LEAD_ORIGINS = new Set([
+  "https://za-media-ai-growth-engine.pages.dev",
+]);
+
+function leadCorsHeaders(origin: string) {
+  const headers = new Headers({ Vary: "Origin" });
+  if (ALLOWED_PUBLIC_LEAD_ORIGINS.has(origin)) {
+    headers.set("Access-Control-Allow-Origin", origin);
+    headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    headers.set("Access-Control-Allow-Headers", "Content-Type");
+    headers.set("Access-Control-Max-Age", "86400");
+  }
+  return headers;
+}
+
+function leadJsonResponse(body: unknown, status: number, origin: string) {
+  return Response.json(body, { status, headers: leadCorsHeaders(origin) });
+}
 
 export const record = internalMutation({
   args: {
@@ -88,14 +106,24 @@ export const record = internalMutation({
 });
 
 export const submit = httpAction(async (ctx, request) => {
-  if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
   const origin = request.headers.get("origin") ?? "";
-  if (origin && !/https:\/\/(?:[^/]+\.)?vercel\.app$/i.test(origin) && !/^https:\/\/za-media/i.test(origin)) {
-    return new Response("Forbidden", { status: 403 });
+  const originAllowed = ALLOWED_PUBLIC_LEAD_ORIGINS.has(origin);
+
+  if (request.method === "OPTIONS") {
+    if (!originAllowed) return new Response(null, { status: 403 });
+    return new Response(null, { status: 204, headers: leadCorsHeaders(origin) });
   }
+  if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+  if (origin && !originAllowed) return new Response("Forbidden", { status: 403 });
+
   let body: any;
-  try { body = await request.json(); } catch { return new Response("Invalid JSON", { status: 400 }); }
-  if (clean(body?.website, 200)) return Response.json({ ok: true });
+  try {
+    body = await request.json();
+  } catch {
+    return leadJsonResponse({ ok: false, error: "Invalid JSON" }, 400, origin);
+  }
+  if (clean(body?.website, 200)) return leadJsonResponse({ ok: true }, 200, origin);
+
   try {
     const result = await ctx.runMutation(anyApi.publicLead.record, {
       full_name: clean(body?.full_name, 120),
@@ -103,8 +131,12 @@ export const submit = httpAction(async (ctx, request) => {
       phone: clean(body?.phone, 80) || undefined,
       company: clean(body?.company, 160) || undefined,
     });
-    return Response.json(result, { status: result.duplicate ? 200 : 201 });
+    return leadJsonResponse(result, result.duplicate ? 200 : 201, origin);
   } catch (error) {
-    return Response.json({ ok: false, error: error instanceof Error ? error.message : "Lead intake failed" }, { status: 400 });
+    return leadJsonResponse(
+      { ok: false, error: error instanceof Error ? error.message : "Lead intake failed" },
+      400,
+      origin,
+    );
   }
 });

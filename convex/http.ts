@@ -31,6 +31,12 @@ http.route({
 
 http.route({
   path: "/public-lead",
+  method: "OPTIONS",
+  handler: publicLeadSubmit,
+});
+
+http.route({
+  path: "/public-lead",
   method: "POST",
   handler: publicLeadSubmit,
 });

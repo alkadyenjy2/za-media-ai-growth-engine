@@ -44,7 +44,17 @@ export function LandingPage({ onEnterDashboard, initialOpen = false }: { onEnter
   const submit = async (e: FormEvent) => {
     e.preventDefault(); setSaving(true); setError('')
     try {
-      const response = await fetch(import.meta.env.VITE_CONVEX_URL + '/public-lead', {
+      const configuredSiteUrl = (import.meta.env.VITE_CONVEX_SITE_URL || '').trim()
+      let siteUrl: URL
+      try {
+        siteUrl = new URL(configuredSiteUrl)
+      } catch {
+        throw new Error('Lead intake is not configured. Please try again later.')
+      }
+      if (siteUrl.protocol !== 'https:' || !siteUrl.hostname.endsWith('.convex.site')) {
+        throw new Error('Lead intake is not configured. Please try again later.')
+      }
+      const response = await fetch(new URL('/public-lead', siteUrl.origin), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
