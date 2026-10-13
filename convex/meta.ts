@@ -1,9 +1,10 @@
 import { v } from "convex/values";
 import { httpAction, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { resolveMetaGraphApiVersion } from "./meta-version.js";
 
 const BLOCKED_PAGE_IDS = new Set(["179969831856298"]);
-const GRAPH_API_VERSION = process.env.META_GRAPH_API_VERSION ?? "v24.0";
+const GRAPH_API_VERSION = resolveMetaGraphApiVersion();
 
 async function hmacSha256Hex(payload: string, secret: string) {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
