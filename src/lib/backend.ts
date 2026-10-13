@@ -23,7 +23,7 @@ class QueryBuilder implements PromiseLike<any> {
     this.head = options?.head === true
     return this
   }
-  eq(column: string, value: any) { this.filters.push(row => row[column] === value); return this }
+  eq(column: string, value: any) { this.filters.push(row => column === 'id' ? String(row.id ?? row._id) === String(value) : row[column] === value); return this }
   neq(column: string, value: any) { this.filters.push(row => row[column] !== value); return this }
   in(column: string, values: any[]) { this.filters.push(row => values.includes(row[column])); return this }
   gte(column: string, value: any) { this.filters.push(row => row[column] >= value); return this }
