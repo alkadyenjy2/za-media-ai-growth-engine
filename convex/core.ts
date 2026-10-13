@@ -89,7 +89,14 @@ export const update = mutation({
     const id = args.id as any;
     const existing = await ctx.db.get(id);
     if (!existing || (existing as any).workspace_id !== ws!._id.toString()) throw new Error("Record not found");
-    await ctx.db.patch(id, { ...(args.data as Record<string, any>), updated_at: new Date().toISOString() } as any);
+    const patch = { ...(args.data as Record<string, any>) };
+    // Only tables declaring updated_at in the Convex schema may receive it.
+    if (args.table === "companies" || args.table === "leads" || args.table === "meta_connections") {
+      patch.updated_at = new Date().toISOString();
+    } else {
+      delete patch.updated_at;
+    }
+    await ctx.db.patch(id, patch as any);
     const next = await ctx.db.get(id);
     return next ? { ...(next as any), id: id.toString(), _id: id.toString() } : null;
   },
