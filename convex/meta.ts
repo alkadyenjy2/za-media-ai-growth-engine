@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { httpAction, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { resolveMetaGraphApiVersion } from "./metaVersion.js";
+import { metaWebhookResponse } from "./metaWebhookResponse.js";
 
 const BLOCKED_PAGE_IDS = new Set(["179969831856298"]);
 const GRAPH_API_VERSION = resolveMetaGraphApiVersion();
@@ -116,5 +117,6 @@ export const webhook = httpAction(async (ctx, request) => {
       }
     }
   }
-  return Response.json({ accepted: true, processed: results.length, results });
+  // Successful items are idempotent, so retrying a mixed batch is safe.
+  return metaWebhookResponse(results);
 });
