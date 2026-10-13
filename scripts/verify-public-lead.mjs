@@ -19,6 +19,9 @@ if (!http.includes('path: "/public-lead"') || !http.includes('handler: publicLea
 if (!http.includes('method: "OPTIONS"')) {
   throw new Error('Convex HTTP router must route public-lead CORS preflight requests');
 }
+if (!publicLead.includes('if (request.method === "OPTIONS")') || !publicLead.includes('status: 204') || !publicLead.includes('leadCorsHeaders(origin)')) {
+  throw new Error('Public lead intake must return an explicit 204 CORS preflight with allowed-origin headers before rejecting non-POST requests');
+}
 if (!publicLead.includes('export const submit = httpAction')) {
   throw new Error('publicLead must expose the public HTTP action');
 }
