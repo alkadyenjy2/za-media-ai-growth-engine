@@ -116,5 +116,10 @@ export const webhook = httpAction(async (ctx, request) => {
       }
     }
   }
+  // Meta retries non-2xx responses. Successful items are idempotent, so retrying a mixed batch is safe.
+  // Do not acknowledge delivery if any lead could not be retrieved or persisted.
+  if (results.some((result: any) => result?.ok === false)) {
+    return Response.json({ accepted: false, processed: results.length, results }, { status: 503 });
+  }
   return Response.json({ accepted: true, processed: results.length, results });
 });
