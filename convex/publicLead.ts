@@ -4,6 +4,24 @@ import { anyApi } from "convex/server";
 
 const clean = (value: unknown, max = 500) => typeof value === "string" ? value.trim().slice(0, max) : "";
 const emailOk = (value: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value);
+const ALLOWED_PUBLIC_LEAD_ORIGINS = new Set([
+  "https://za-media-ai-growth-engine.pages.dev",
+]);
+
+function leadCorsHeaders(origin: string) {
+  const headers = new Headers({ Vary: "Origin" });
+  if (ALLOWED_PUBLIC_LEAD_ORIGINS.has(origin)) {
+    headers.set("Access-Control-Allow-Origin", origin);
+    headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    headers.set("Access-Control-Allow-Headers", "Content-Type");
+    headers.set("Access-Control-Max-Age", "86400");
+  }
+  return headers;
+}
+
+function leadJsonResponse(body: unknown, status: number, origin: string) {
+  return Response.json(body, { status, headers: leadCorsHeaders(origin) });
+}
 
 export const record = internalMutation({
   args: {
