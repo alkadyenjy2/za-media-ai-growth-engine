@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { httpAction, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { resolveMetaGraphApiVersion } from "./metaVersion.js";
+import { metaWebhookResponse } from "./metaWebhookResponse.js";
 
 const BLOCKED_PAGE_IDS = new Set(["179969831856298"]);
 const GRAPH_API_VERSION = resolveMetaGraphApiVersion();
@@ -69,11 +70,10 @@ export const recordWebhook = internalMutation({
       return { ok: true, duplicate: false, evidence_id: evidenceId.toString(), promoted: false, reason: "REQUIRED_FIELDS_MISSING" };
     }
 
-    const companyId = await ctx.db.insert("companies", { workspace_id: connection.workspace_id, name: companyName, domain: website || undefined, industry, country, created_at: now, updated_at: now });
-    const contactId = await ctx.db.insert("contacts", { workspace_id: connection.workspace_id, company_id: companyId.toString(), full_name: fullName, email, phone, job_title: jobTitle, is_decision_maker: false, linkedin_url: pick(fields, ["linkedin", "linkedin_url"]) || undefined, created_at: now });
-    const leadId = await ctx.db.insert("leads", { workspace_id: connection.workspace_id, company_id: companyId.toString(), contact_id: contactId.toString(), idempotency_key: "meta:" + args.leadgen_id, contact_name: fullName, company_name: companyName, email, phone, source: "meta_leadgen", industry, monthly_budget: 0, estimated_value: 0, stage: "new", status: "qualified_pending_review", last_activity: now, notes: website ? "Website: " + website : undefined, assigned_agent: "za-meta-intake", automation_status: "evidence_verified_human_review_required", likes_count: 0, liked_by_me: false, created_at: now, updated_at: now });
-    await ctx.db.insert("audit_logs", { workspace_id: connection.workspace_id, action: "meta_lead_promoted", entity_type: "lead", entity_id: leadId.toString(), actor: "meta-webhook", details: { leadgen_id: args.leadgen_id, evidence_id: evidenceId.toString(), outreach_eligible: false, reason: "retrieved_and_required_fields_present" }, created_at: now });
-    return { ok: true, duplicate: false, evidence_id: evidenceId.toString(), promoted: true, lead_id: leadId.toString() };
+    const companyId = await ctx.db.insert("companies", { workspace_id: connection.workspace_id, name: companyName, website: website || undefined, industry, country, created_at: now, updated_at: now });
+    const leadId = await ctx.db.insert("leads", { workspace_id: connection.workspace_id, company_id: companyId, full_name: fullName, email, phone, job_title: jobTitle || undefined, source: "meta_lead_ads", status: "new", idempotency_key: "meta:" + args.leadgen_id, created_at: now, updated_at: now });
+    await ctx.db.insert("audit_logs", { workspace_id: connection.workspace_id, action: "meta_lead_promoted", entity_type: "lead", entity_id: leadId.toString(), actor: "meta-webhook", details: { leadgen_id: args.leadgen_id, evidence_id: evidenceId.toString(), outreach_eligible: false }, created_at: now });
+    return { ok: true, duplicate: false, evidence_id: evidenceId.toString(), lead_id: leadId.toString(), promoted: true };
   },
 });
 
@@ -116,10 +116,6 @@ export const webhook = httpAction(async (ctx, request) => {
       }
     }
   }
-  // Meta retries non-2xx responses. Successful items are idempotent, so retrying a mixed batch is safe.
-  // Do not acknowledge delivery if any lead could not be retrieved or persisted.
-  if (results.some((result: any) => result?.ok === false)) {
-    return Response.json({ accepted: false, processed: results.length, results }, { status: 503 });
-  }
-  return Response.json({ accepted: true, processed: results.length, results });
+  // Successful items are idempotent, so retrying a mixed batch is safe.
+  return metaWebhookResponse(results);
 });
