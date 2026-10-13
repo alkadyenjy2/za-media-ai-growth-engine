@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resolveMetaGraphApiVersion } from "../convex/meta-version.js";
+import { resolveMetaGraphApiVersion } from "../convex/metaVersion.js";
 
 test("defaults Meta Graph API to v26.0", () => {
   assert.equal(resolveMetaGraphApiVersion({}), "v26.0");

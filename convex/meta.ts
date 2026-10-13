@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { httpAction, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { resolveMetaGraphApiVersion } from "./meta-version.js";
+import { resolveMetaGraphApiVersion } from "./metaVersion.js";
 
 const BLOCKED_PAGE_IDS = new Set(["179969831856298"]);
 const GRAPH_API_VERSION = resolveMetaGraphApiVersion();
