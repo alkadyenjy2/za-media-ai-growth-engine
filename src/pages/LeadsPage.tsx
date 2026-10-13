@@ -91,12 +91,19 @@ export function LeadsPage() {
 
   const qualify = async (lead: Lead) => {
     setQualifyingId(lead.id); setError(''); setAiMessage('')
-    const result = await qualifyLead(lead)
-    if (result.error) { setError(`AI qualification failed: ${result.error}`); setQualifyingId(null); return }
-    const next: Lead = { ...lead, ai_score: result.score ?? 0, ai_qualification: result.qualification ?? null, ai_reasoning: result.reasoning ?? null, ai_recommended_action: result.recommended_action ?? null, ai_confidence: result.confidence ?? null, ai_evaluated_at: new Date().toISOString() }
-    setLeads((current) => current.map((item) => item.id === lead.id ? next : item))
-    setAiMessage(`${lead.contact_name}: ${next.ai_score}/100 • ${next.ai_qualification} • ${next.ai_recommended_action}`)
-    setQualifyingId(null)
+    try {
+      const result = await qualifyLead(lead)
+      if (result.error) { setError(`AI qualification failed: ${result.error}`); return }
+      const evaluatedAt = new Date().toISOString()
+      const next: Lead = { ...lead, ai_score: result.score ?? 0, ai_qualification: result.qualification ?? null, ai_reasoning: result.reasoning ?? null, ai_recommended_action: result.recommended_action ?? null, ai_confidence: result.confidence ?? null, ai_evaluated_at: evaluatedAt }
+      const saved = await dataClient.from('leads').update({ ai_score: next.ai_score, ai_qualification: next.ai_qualification, ai_reasoning: next.ai_reasoning, ai_recommended_action: next.ai_recommended_action, ai_confidence: next.ai_confidence, ai_evaluated_at: evaluatedAt, updated_at: evaluatedAt }).eq('id', lead.id)
+      if (saved.error) { setError(`AI result was calculated but not saved: ${saved.error.message}`); return }
+      setLeads((current) => current.map((item) => item.id === lead.id ? next : item))
+      setAiMessage(`${lead.contact_name}: ${next.ai_score}/100 • ${next.ai_qualification} • ${next.ai_recommended_action}`)
+      await logAction('lead.ai_qualified', lead.id, { score: next.ai_score, qualification: next.ai_qualification })
+    } catch (error) {
+      setError(`AI qualification failed: ${error instanceof Error ? error.message : String(error)}`)
+    } finally { setQualifyingId(null) }
   }
 
   const updateStatus = async (id: string, status: LeadStatus) => {
