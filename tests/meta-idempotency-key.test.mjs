@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const requireFromRoot = createRequire(resolve(root, "package.json"));
-const { buildSync } = requireFromRoot(resolve(root, "node_modules/.pnpm/esbuild@0.27.0/node_modules/esbuild/lib/main.js"));
+const { buildSync } = requireFromRoot("esbuild");
 const bundlePath = resolve(root, "node_modules/.cache/meta-idempotency-under-test.cjs");
 buildSync({ entryPoints: [resolve(root, "convex/meta.ts")], bundle: true, platform: "node", format: "cjs", packages: "external", outfile: bundlePath });
 const { recordWebhook, webhook } = requireFromRoot(bundlePath);

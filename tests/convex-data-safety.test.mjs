@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const requireFromRoot = createRequire(resolve(root, "package.json"));
-const { buildSync } = requireFromRoot(resolve(root, "node_modules/.pnpm/esbuild@0.27.0/node_modules/esbuild/lib/main.js"));
+const { buildSync } = requireFromRoot("esbuild");
 const coreBundle = resolve(root, "node_modules/.cache/core-data-safety-under-test.cjs");
 const metaBundle = resolve(root, "node_modules/.cache/meta-retention-safety-under-test.cjs");
 const aiBundle = resolve(root, "node_modules/.cache/ai-auth-under-test.cjs");
