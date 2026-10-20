@@ -52,7 +52,18 @@ class QueryBuilder implements PromiseLike<any> {
     if (this.op === 'insert') {
       const items = Array.isArray(this.payload) ? this.payload : [this.payload]
       const created: Row[] = []
-      for (const item of items) created.push(await convex.mutation(api.core.insert, { table: this.table as any, data: item }))
+      for (const item of items) {
+        if (this.table === 'audit_logs') {
+          created.push(await convex.mutation(api.core.recordAudit, {
+            action: String(item?.action ?? ''),
+            entity_type: String(item?.entity_type ?? ''),
+            entity_id: typeof item?.entity_id === 'string' ? item.entity_id : undefined,
+            details: item?.details ?? {},
+          }))
+        } else {
+          created.push(await convex.mutation(api.core.insert, { table: this.table as any, data: item }))
+        }
+      }
       return { data: Array.isArray(this.payload) ? created : created[0] ?? null, error: null, count: created.length }
     }
     if (this.op === 'update') {

@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { settleWebhookJobs } from './webhookJobs.ts'
 
 const BLOCKED_PAGE_IDS = new Set(['179969831856298'])
 const BLOCKED_FORM_IDS = new Set(['1117890449167883'])
@@ -71,6 +72,7 @@ Deno.serve(async (req) => {
   if (body.object !== 'page') return json({ accepted: true, ignored: true })
 
   const jobs: Promise<unknown>[] = []
+  let eventsPendingDurableStorage = false
   for (const entry of Array.isArray(body.entry) ? body.entry : []) {
     for (const change of Array.isArray(entry?.changes) ? entry.changes : []) {
       if (change?.field !== 'leadgen') continue
@@ -78,22 +80,33 @@ Deno.serve(async (req) => {
       const leadgenId = String(value.leadgen_id || '')
       const pageId = String(value.page_id || entry.id || '')
       const formId = String(value.form_id || '')
-      if (!leadgenId || !pageId) continue
+      if (!leadgenId || !pageId) {
+        eventsPendingDurableStorage = true
+        jobs.push(audit(supabase, 'meta_webhook_rejected', { reason: 'missing_required_identifiers', page_id: pageId, form_id: formId }))
+        continue
+      }
       if (BLOCKED_PAGE_IDS.has(pageId) || BLOCKED_FORM_IDS.has(formId)) {
+        eventsPendingDurableStorage = true
         jobs.push(audit(supabase, 'meta_webhook_blocked', { reason: BLOCKED_PAGE_IDS.has(pageId) ? 'blocked_page_id' : 'blocked_form_id', external_id: leadgenId, page_id: pageId, form_id: formId }))
         continue
       }
       jobs.push((async () => {
-        await audit(supabase, 'meta_webhook_received', { external_id: leadgenId, page_id: pageId, form_id: formId })
-        await delegate(supabase, { leadgen_id: leadgenId, page_id: pageId, form_id: formId, created_time: value.created_time, source: 'webhook' })
-      })().catch(async (error) => {
-        try { await audit(supabase, 'meta_webhook_delegate_failed', { external_id: leadgenId, page_id: pageId, form_id: formId, reason: error instanceof Error ? error.message : String(error) }) } catch { /* do not leak internal details */ }
-      }))
+        try {
+          await audit(supabase, 'meta_webhook_received', { external_id: leadgenId, page_id: pageId, form_id: formId })
+          await delegate(supabase, { leadgen_id: leadgenId, page_id: pageId, form_id: formId, created_time: value.created_time, source: 'webhook' })
+        } catch (error) {
+          try {
+            await audit(supabase, 'meta_webhook_delegate_failed', { external_id: leadgenId, page_id: pageId, form_id: formId, reason: error instanceof Error ? error.message : 'internal_error' })
+          } catch { /* preserve the original failure; do not leak internal details */ }
+          throw error
+        }
+      })())
     }
   }
 
-  const edgeRuntime = (globalThis as { EdgeRuntime?: { waitUntil(promise: Promise<unknown>): void } }).EdgeRuntime
-  if (edgeRuntime) edgeRuntime.waitUntil(Promise.all(jobs))
-  else await Promise.all(jobs)
+  // Do not acknowledge the delivery until critical persistence/delegation jobs settle.
+  // Any failed job must produce a 5xx so Meta can retry the delivery.
+  const { failedCount, shouldRetry } = await settleWebhookJobs(jobs, eventsPendingDurableStorage)
+  if (shouldRetry) return json({ accepted: false, retryable: true, failedJobs: failedCount, eventsPendingDurableStorage }, 503)
   return json({ accepted: true })
 })

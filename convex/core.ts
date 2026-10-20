@@ -34,6 +34,7 @@ export const list = query({
 export const insert = mutation({
   args: { table: tableValidator, data: v.any() },
   handler: async (ctx, args) => {
+    if (args.table === "audit_logs") throw new Error("Audit logs are append-only; use recordAudit");
     const ws = await requireWorkspace(ctx);
     const now = new Date().toISOString();
     const input = args.data as Record<string, any>;
@@ -42,6 +43,14 @@ export const insert = mutation({
       workspace_id: ws!._id.toString(),
       created_at: input.created_at ?? now,
     };
+    if (args.table === "meta_connections") {
+      // Browser clients may request a connection, but only server verification may mark it verified.
+      data.status = "pending";
+      delete data.verified_at;
+      data.provider ??= "meta";
+      data.metadata ??= {};
+      data.updated_at ??= now;
+    }
 
     // The legacy-compatible client intentionally keeps forms small. Supply
     // schema-required operational defaults here so every CRUD surface writes
@@ -69,10 +78,6 @@ export const insert = mutation({
       case "income_records":
         data.transaction_date ??= now;
         break;
-      case "audit_logs":
-        data.actor ??= "dashboard";
-        data.details ??= {};
-        break;
       case "messages":
         data.ai_generated ??= false;
         break;
@@ -82,14 +87,47 @@ export const insert = mutation({
     return { ...data, id: id.toString(), _id: id.toString() };
   },
 });
+export const recordAudit = mutation({
+  args: { action: v.string(), entity_type: v.string(), entity_id: v.optional(v.string()), details: v.any() },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+    if (!args.action.trim() || args.action.length > 120) throw new Error("Invalid audit action");
+    if (!args.entity_type.trim() || args.entity_type.length > 120) throw new Error("Invalid audit entity type");
+    const details = args.details ?? {};
+    if (JSON.stringify(details).length > 10000) throw new Error("Audit details exceed the 10000 character limit");
+    const ws = await requireWorkspace(ctx);
+    const now = new Date().toISOString();
+    const id = await ctx.db.insert("audit_logs", {
+      workspace_id: ws!._id.toString(),
+      action: args.action,
+      entity_type: args.entity_type,
+      entity_id: args.entity_id,
+      actor: identity.subject,
+      details,
+      created_at: now,
+    });
+    return { id: id.toString(), _id: id.toString(), workspace_id: ws!._id.toString(), action: args.action, entity_type: args.entity_type, entity_id: args.entity_id, actor: identity.subject, details, created_at: now };
+  },
+});
 export const update = mutation({
   args: { table: tableValidator, id: v.string(), data: v.any() },
   handler: async (ctx, args) => {
+    if (args.table === "audit_logs") throw new Error("Audit logs are append-only; use recordAudit");
     const ws = await requireWorkspace(ctx);
-    const id = args.id as any;
+    const id = ctx.db.normalizeId(args.table, args.id);
+    if (!id) throw new Error("Record not found");
     const existing = await ctx.db.get(id);
     if (!existing || (existing as any).workspace_id !== ws!._id.toString()) throw new Error("Record not found");
     const patch = { ...(args.data as Record<string, any>) };
+    if (Object.prototype.hasOwnProperty.call(patch, "workspace_id")) {
+      if (patch.workspace_id !== ws!._id.toString()) throw new Error("workspace_id cannot change");
+      delete patch.workspace_id;
+    }
+    if (args.table === "meta_connections") {
+      if (Object.prototype.hasOwnProperty.call(patch, "verified_at") || Object.prototype.hasOwnProperty.call(patch, "status")) throw new Error("Meta connection status is server-controlled");
+      if (Object.prototype.hasOwnProperty.call(patch, "page_id")) throw new Error("Meta connection page_id is immutable");
+    }
     // Only tables declaring updated_at in the Convex schema may receive it.
     if (args.table === "companies" || args.table === "leads" || args.table === "meta_connections") {
       patch.updated_at = new Date().toISOString();
@@ -104,8 +142,10 @@ export const update = mutation({
 export const remove = mutation({
   args: { table: tableValidator, id: v.string() },
   handler: async (ctx, args) => {
+    if (args.table === "audit_logs") throw new Error("Audit logs are append-only; use recordAudit");
     const ws = await requireWorkspace(ctx);
-    const id = args.id as any;
+    const id = ctx.db.normalizeId(args.table, args.id);
+    if (!id) throw new Error("Record not found");
     const existing = await ctx.db.get(id);
     if (!existing || (existing as any).workspace_id !== ws!._id.toString()) throw new Error("Record not found");
     await ctx.db.delete(id);

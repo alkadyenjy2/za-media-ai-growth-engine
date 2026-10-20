@@ -2,14 +2,12 @@ name: Convex Production Deploy
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "convex/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - ".github/workflows/convex-production-deploy.yml"
+    inputs:
+      confirm_production_deploy:
+        description: "Confirm deploying the reviewed Convex backend to production"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -22,12 +20,18 @@ jobs:
   deploy:
     name: Deploy Convex backend
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - name: Require main branch and production deploy key
         shell: bash
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+          CONFIRM_PRODUCTION_DEPLOY: ${{ inputs.confirm_production_deploy }}
         run: |
+          if [ "$CONFIRM_PRODUCTION_DEPLOY" != "true" ]; then
+            echo "::error::Set confirm_production_deploy=true only after reviewing all validation evidence."
+            exit 1
+          fi
           if [ "$GITHUB_REF" != "refs/heads/main" ]; then
             echo "::error::Production backend deployments may only run from main."
             exit 1
@@ -42,10 +46,24 @@ jobs:
           version: 10.28.0
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Verify public lead regression
+        run: pnpm run test:public-lead
+      - name: Verify Meta Graph version policy
+        run: pnpm run test:meta-version
+      - name: Verify Meta webhook retry acknowledgement
+        run: pnpm run test:meta-webhook
+      - name: Verify durable Meta lifecycle and webhook settlement
+        run: pnpm run test:meta-lifecycle
+      - name: Typecheck frontend and backend
+        run: pnpm run typecheck
+      - name: Typecheck Convex webhook and core
+        run: pnpm exec tsc --noEmit --target ES2022 --module ESNext --moduleResolution bundler --skipLibCheck convex/meta.ts convex/core.ts convex/schema.ts convex/metaEventPolicy.ts convex/crons.ts
+      - name: Build frontend
+        run: pnpm run build
       - name: Deploy production backend
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}

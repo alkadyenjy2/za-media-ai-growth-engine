@@ -13,12 +13,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm install
       - run: npm run test:public-lead
       - run: npm run test:meta-version
       - run: npm run test:meta-webhook
+      - run: npm run test:meta-lifecycle
       - run: npm run typecheck
       - run: npx tsc --noEmit --target ES2020 --module ESNext --moduleResolution bundler --skipLibCheck convex/meta.ts
       - run: npm run build

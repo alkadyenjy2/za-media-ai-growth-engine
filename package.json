@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test:public-lead": "node scripts/verify-public-lead.mjs",
     "test:meta-version": "node --test tests/meta-graph-version.test.mjs",
-    "test:meta-webhook": "node --test tests/meta-webhook-retry.test.mjs"
+    "test:meta-webhook": "node --test tests/meta-webhook-retry.test.mjs",
+    "test:meta-lifecycle": "node --test tests/meta-event-policy.test.mjs tests/meta-idempotency-key.test.mjs tests/convex-data-safety.test.mjs tests/supabase-webhook-handler-contract.test.mjs tests/supabase-webhook-jobs.test.mjs"
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.90",
