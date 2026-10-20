@@ -3,19 +3,18 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 
-const originalRoot = "C:/Users/LTC/Documents/Codex/za-media-ai-growth-engine";
-const requireFromOriginal = createRequire(resolve(originalRoot, "package.json"));
-const { buildSync } = requireFromOriginal(resolve(originalRoot, "node_modules/.pnpm/esbuild@0.27.0/node_modules/esbuild/lib/main.js"));
 const root = resolve(import.meta.dirname, "..");
-const coreBundle = resolve(originalRoot, "node_modules/.cache/core-data-safety-under-test.cjs");
-const metaBundle = resolve(originalRoot, "node_modules/.cache/meta-retention-safety-under-test.cjs");
-const aiBundle = resolve(originalRoot, "node_modules/.cache/ai-auth-under-test.cjs");
+const requireFromRoot = createRequire(resolve(root, "package.json"));
+const { buildSync } = requireFromRoot(resolve(root, "node_modules/.pnpm/esbuild@0.27.0/node_modules/esbuild/lib/main.js"));
+const coreBundle = resolve(root, "node_modules/.cache/core-data-safety-under-test.cjs");
+const metaBundle = resolve(root, "node_modules/.cache/meta-retention-safety-under-test.cjs");
+const aiBundle = resolve(root, "node_modules/.cache/ai-auth-under-test.cjs");
 buildSync({ entryPoints: [resolve(root, "convex/core.ts")], bundle: true, platform: "node", format: "cjs", packages: "external", outfile: coreBundle });
 buildSync({ entryPoints: [resolve(root, "convex/meta.ts")], bundle: true, platform: "node", format: "cjs", packages: "external", outfile: metaBundle });
 buildSync({ entryPoints: [resolve(root, "convex/ai.ts")], bundle: true, platform: "node", format: "cjs", packages: "external", outfile: aiBundle });
-const { insert, update, remove, recordAudit } = requireFromOriginal(coreBundle);
-const { claimDueWebhookEvents } = requireFromOriginal(metaBundle);
-const { qualifyLead } = requireFromOriginal(aiBundle);
+const { insert, update, remove, recordAudit } = requireFromRoot(coreBundle);
+const { claimDueWebhookEvents } = requireFromRoot(metaBundle);
+const { qualifyLead } = requireFromRoot(aiBundle);
 
 function coreContext(recordTable = "meta_connections") {
   const record = { _id: "record-1", workspace_id: "workspace-a", status: "pending", page_id: "page-a", verified_at: undefined };

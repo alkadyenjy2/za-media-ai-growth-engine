@@ -4,13 +4,12 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 
-const originalRoot = "C:/Users/LTC/Documents/Codex/za-media-ai-growth-engine";
-const requireFromOriginal = createRequire(resolve(originalRoot, "package.json"));
-const { buildSync } = requireFromOriginal(resolve(originalRoot, "node_modules/.pnpm/esbuild@0.27.0/node_modules/esbuild/lib/main.js"));
 const root = resolve(import.meta.dirname, "..");
-const bundlePath = resolve(originalRoot, "node_modules/.cache/meta-idempotency-under-test.cjs");
+const requireFromRoot = createRequire(resolve(root, "package.json"));
+const { buildSync } = requireFromRoot(resolve(root, "node_modules/.pnpm/esbuild@0.27.0/node_modules/esbuild/lib/main.js"));
+const bundlePath = resolve(root, "node_modules/.cache/meta-idempotency-under-test.cjs");
 buildSync({ entryPoints: [resolve(root, "convex/meta.ts")], bundle: true, platform: "node", format: "cjs", packages: "external", outfile: bundlePath });
-const { recordWebhook, webhook } = requireFromOriginal(bundlePath);
+const { recordWebhook, webhook } = requireFromRoot(bundlePath);
 if (!globalThis.crypto) globalThis.crypto = webcrypto;
 assert.equal(typeof recordWebhook?._handler, "function");
 
