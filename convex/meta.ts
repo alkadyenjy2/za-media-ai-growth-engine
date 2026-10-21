@@ -46,7 +46,6 @@ export const enqueueWebhookEvent = internalMutation({
     const connection = await ctx.db.query("meta_connections").withIndex("by_page", (q: any) => q.eq("page_id", args.page_id)).unique();
     const policyBlockReason = BLOCKED_PAGE_IDS.has(args.page_id) ? "BLOCKED_PAGE_ID" : BLOCKED_FORM_IDS.has(args.form_id) ? "BLOCKED_FORM_ID" : "";
     const connectionVerified = connection?.status === "verified";
-    const blockReason = policyBlockReason || (!connectionVerified ? "NO_VERIFIED_META_CONNECTION" : "");
     const connectionVerifiedAt = connection?.status === "verified" ? connection.verified_at : undefined;
     const verifiedAfterReceipt = typeof connectionVerifiedAt === "number" && connectionVerifiedAt >= args.received_at ? connectionVerifiedAt : undefined;
     if (existing) {
