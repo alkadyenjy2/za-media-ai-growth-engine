@@ -1,11 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const requireFromRoot = createRequire(resolve(root, "package.json"));
-const { buildSync } = requireFromRoot("esbuild");
+const { buildSync } = requireFromRoot(resolve(root, "node_modules/.pnpm/esbuild@0.27.0/node_modules/esbuild/lib/main.js"));
+mkdirSync(resolve(root, "node_modules/.cache"), { recursive: true });
 const coreBundle = resolve(root, "node_modules/.cache/core-data-safety-under-test.cjs");
 const metaBundle = resolve(root, "node_modules/.cache/meta-retention-safety-under-test.cjs");
 const aiBundle = resolve(root, "node_modules/.cache/ai-auth-under-test.cjs");

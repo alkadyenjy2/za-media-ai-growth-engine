@@ -2,11 +2,13 @@ import test from "node:test";
 import { createHmac, webcrypto } from "node:crypto";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const requireFromRoot = createRequire(resolve(root, "package.json"));
-const { buildSync } = requireFromRoot("esbuild");
+const { buildSync } = requireFromRoot(resolve(root, "node_modules/.pnpm/esbuild@0.27.0/node_modules/esbuild/lib/main.js"));
+mkdirSync(resolve(root, "node_modules/.cache"), { recursive: true });
 const bundlePath = resolve(root, "node_modules/.cache/meta-idempotency-under-test.cjs");
 buildSync({ entryPoints: [resolve(root, "convex/meta.ts")], bundle: true, platform: "node", format: "cjs", packages: "external", outfile: bundlePath });
 const { recordWebhook, webhook } = requireFromRoot(bundlePath);
