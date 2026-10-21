@@ -1,6 +1,26 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { enqueueWebhookEvent, claimDueWebhookEvents } from "../convex/meta.ts";
+import { createRequire } from "node:module";
+import { mkdirSync, readdirSync } from "node:fs";
+import { resolve } from "node:path";
+
+const root = resolve(import.meta.dirname, "..");
+const requireFromRoot = createRequire(resolve(root, "package.json"));
+function loadEsbuild() {
+  try {
+    return requireFromRoot("esbuild");
+  } catch (error) {
+    const pnpmStore = resolve(root, "node_modules/.pnpm");
+    const candidates = readdirSync(pnpmStore).filter((name) => /^esbuild@/.test(name)).sort();
+    if (candidates.length === 0) throw error;
+    return requireFromRoot(resolve(pnpmStore, candidates[candidates.length - 1], "node_modules/esbuild/lib/main.js"));
+  }
+}
+const { buildSync } = loadEsbuild();
+mkdirSync(resolve(root, "node_modules/.cache"), { recursive: true });
+const bundlePath = resolve(root, "node_modules/.cache/meta-unverified-connection-retry.cjs");
+buildSync({ entryPoints: [resolve(root, "convex/meta.ts")], bundle: true, platform: "node", format: "cjs", packages: "external", outfile: bundlePath });
+const { enqueueWebhookEvent, claimDueWebhookEvents } = requireFromRoot(bundlePath);
 
 function makeContext() {
   let event = null;
