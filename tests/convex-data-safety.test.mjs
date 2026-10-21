@@ -1,12 +1,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const requireFromRoot = createRequire(resolve(root, "package.json"));
-const { buildSync } = requireFromRoot(resolve(root, "node_modules/.pnpm/esbuild@0.27.0/node_modules/esbuild/lib/main.js"));
+function loadEsbuild() {
+  try {
+    return requireFromRoot("esbuild");
+  } catch (error) {
+    const pnpmStore = resolve(root, "node_modules/.pnpm");
+    const candidates = readdirSync(pnpmStore).filter((name) => /^esbuild@/.test(name)).sort();
+    if (candidates.length === 0) throw error;
+    return requireFromRoot(resolve(pnpmStore, candidates[candidates.length - 1], "node_modules/esbuild/lib/main.js"));
+  }
+}
+const { buildSync } = loadEsbuild();
 mkdirSync(resolve(root, "node_modules/.cache"), { recursive: true });
 const coreBundle = resolve(root, "node_modules/.cache/core-data-safety-under-test.cjs");
 const metaBundle = resolve(root, "node_modules/.cache/meta-retention-safety-under-test.cjs");
