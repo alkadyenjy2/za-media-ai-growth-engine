@@ -44,11 +44,13 @@ export const enqueueWebhookEvent = internalMutation({
     const eventKey = "meta:" + args.page_id + ":" + args.leadgen_id;
     const existing = await ctx.db.query("meta_webhook_events").withIndex("by_event_key", (q: any) => q.eq("event_key", eventKey)).unique();
     const connection = await ctx.db.query("meta_connections").withIndex("by_page", (q: any) => q.eq("page_id", args.page_id)).unique();
-    const blockReason = BLOCKED_PAGE_IDS.has(args.page_id) ? "BLOCKED_PAGE_ID" : BLOCKED_FORM_IDS.has(args.form_id) ? "BLOCKED_FORM_ID" : (!connection || connection.status !== "verified" ? "NO_VERIFIED_META_CONNECTION" : "");
+    const policyBlockReason = BLOCKED_PAGE_IDS.has(args.page_id) ? "BLOCKED_PAGE_ID" : BLOCKED_FORM_IDS.has(args.form_id) ? "BLOCKED_FORM_ID" : "";
+    const connectionVerified = connection?.status === "verified";
+    const blockReason = policyBlockReason || (!connectionVerified ? "NO_VERIFIED_META_CONNECTION" : "");
     const connectionVerifiedAt = connection?.status === "verified" ? connection.verified_at : undefined;
     const verifiedAfterReceipt = typeof connectionVerifiedAt === "number" && connectionVerifiedAt >= args.received_at ? connectionVerifiedAt : undefined;
     if (existing) {
-      if (existing.status === "processed" || existing.status === "blocked" || existing.status === "abandoned") {
+      if (existing.status === "processed" || existing.status === "abandoned" || (existing.status === "blocked" && existing.terminal_reason !== "NO_VERIFIED_META_CONNECTION")) {
         return { shouldRetrieve: false, status: existing.status, duplicate: true, event_key: eventKey };
       }
       if (existing.status === "processing" && !isProcessingLeaseExpired(existing.lease_started_at, now)) {
@@ -57,30 +59,36 @@ export const enqueueWebhookEvent = internalMutation({
       if (existing.status === "pending" && existing.next_attempt_at > now) {
         return { shouldRetrieve: false, status: "pending", retryable: true, event_key: eventKey };
       }
-      if (blockReason) {
-        await ctx.db.patch(existing._id, { status: "blocked", terminal_at: now, terminal_reason: blockReason, lease_started_at: undefined, last_error: blockReason, updated_at: now, workspace_id: connection?.workspace_id });
-        await ctx.db.insert("audit_logs", { workspace_id: connection?.workspace_id ?? "unmapped", action: "meta_webhook_blocked", entity_type: "meta_webhook_event", entity_id: existing._id.toString(), actor: "meta-webhook", details: { reason: blockReason, event_key: eventKey }, created_at: new Date(now).toISOString() });
+      if (policyBlockReason) {
+        await ctx.db.patch(existing._id, { status: "blocked", terminal_at: now, terminal_reason: policyBlockReason, lease_started_at: undefined, last_error: policyBlockReason, updated_at: now, workspace_id: connection?.workspace_id });
+        await ctx.db.insert("audit_logs", { workspace_id: connection?.workspace_id ?? "unmapped", action: "meta_webhook_blocked", entity_type: "meta_webhook_event", entity_id: existing._id.toString(), actor: "meta-webhook", details: { reason: policyBlockReason, event_key: eventKey }, created_at: new Date(now).toISOString() });
         return { shouldRetrieve: false, status: "blocked", durable: true, event_key: eventKey };
+      }
+      if (!connectionVerified) {
+        await ctx.db.patch(existing._id, { status: "pending", next_attempt_at: now + retryDelayMs(Math.max(1, existing.attempt_count + 1)), terminal_at: undefined, terminal_reason: undefined, lease_started_at: undefined, last_error: "NO_VERIFIED_META_CONNECTION", updated_at: now });
+        return { shouldRetrieve: false, status: "pending", retryable: true, durable: true, event_key: eventKey };
       }
       if (existing.attempt_count >= MAX_TRANSIENT_ATTEMPTS) {
         await ctx.db.patch(existing._id, { status: "abandoned", terminal_at: now, terminal_reason: "MAX_TRANSIENT_ATTEMPTS", lease_started_at: undefined, updated_at: now });
         return { shouldRetrieve: false, status: "abandoned", durable: true, event_key: eventKey };
       }
-      await ctx.db.patch(existing._id, { status: "processing", attempt_count: existing.attempt_count + 1, lease_started_at: now, next_attempt_at: now, last_verified_at: verifiedAfterReceipt ?? existing.last_verified_at, last_error: undefined, updated_at: now, workspace_id: connection!.workspace_id });
+      const verifiedAfterOriginalReceipt = typeof connectionVerifiedAt === "number" && connectionVerifiedAt >= existing.received_at ? connectionVerifiedAt : existing.last_verified_at;
+      await ctx.db.patch(existing._id, { status: "processing", attempt_count: existing.attempt_count + 1, lease_started_at: now, next_attempt_at: now, terminal_at: undefined, terminal_reason: undefined, last_verified_at: verifiedAfterOriginalReceipt, last_error: undefined, updated_at: now, workspace_id: connection!.workspace_id });
       return { shouldRetrieve: true, status: "processing", event_key: eventKey };
     }
-    const status = blockReason ? "blocked" : "processing";
+    const status = policyBlockReason ? "blocked" : connectionVerified ? "processing" : "pending";
     const eventId = await ctx.db.insert("meta_webhook_events", {
       event_key: eventKey, page_id: args.page_id, leadgen_id: args.leadgen_id, form_id: args.form_id || undefined, created_time: args.created_time || undefined,
-      workspace_id: connection?.workspace_id, status, received_at: args.received_at, attempt_count: blockReason ? 0 : 1,
-      next_attempt_at: now, lease_started_at: blockReason ? undefined : now, terminal_at: blockReason ? now : undefined,
-      terminal_reason: blockReason || undefined, last_error: blockReason || undefined, last_verified_at: blockReason ? undefined : verifiedAfterReceipt,
+      workspace_id: connection?.workspace_id, status, received_at: args.received_at, attempt_count: policyBlockReason ? 0 : connectionVerified ? 1 : 0,
+      next_attempt_at: connectionVerified ? now : now + retryDelayMs(1), lease_started_at: connectionVerified ? now : undefined, terminal_at: policyBlockReason ? now : undefined,
+      terminal_reason: policyBlockReason || undefined, last_error: policyBlockReason || (!connectionVerified ? "NO_VERIFIED_META_CONNECTION" : undefined), last_verified_at: connectionVerified ? verifiedAfterReceipt : undefined,
       created_at: now, updated_at: now,
     });
-    if (blockReason) {
-      await ctx.db.insert("audit_logs", { workspace_id: connection?.workspace_id ?? "unmapped", action: "meta_webhook_blocked", entity_type: "meta_webhook_event", entity_id: eventId.toString(), actor: "meta-webhook", details: { reason: blockReason, event_key: eventKey }, created_at: new Date(now).toISOString() });
+    if (policyBlockReason) {
+      await ctx.db.insert("audit_logs", { workspace_id: connection?.workspace_id ?? "unmapped", action: "meta_webhook_blocked", entity_type: "meta_webhook_event", entity_id: eventId.toString(), actor: "meta-webhook", details: { reason: policyBlockReason, event_key: eventKey }, created_at: new Date(now).toISOString() });
       return { shouldRetrieve: false, status: "blocked", durable: true, event_key: eventKey };
     }
+    if (!connectionVerified) return { shouldRetrieve: false, status: "pending", retryable: true, durable: true, event_key: eventKey };
     return { shouldRetrieve: true, status: "processing", event_key: eventKey };
   },
 });
@@ -91,7 +99,8 @@ export const markWebhookFailure = internalMutation({
     const event = await ctx.db.query("meta_webhook_events").withIndex("by_event_key", (q: any) => q.eq("event_key", args.event_key)).unique();
     if (!event || event.status !== "processing") return { ok: false, reason: "EVENT_NOT_PROCESSING" };
     const now = Date.now();
-    const canRetry = args.transient && shouldRetryTransientFailure(event.attempt_count);
+    const verificationPending = args.error_kind === "NO_VERIFIED_META_CONNECTION";
+    const canRetry = verificationPending || (args.transient && shouldRetryTransientFailure(event.attempt_count));
     const delay = canRetry ? retryDelayMs(event.attempt_count) : 0;
     const nextStatus = canRetry ? "pending" : (args.transient ? "abandoned" : "blocked");
     await ctx.db.patch(event._id, {
@@ -127,18 +136,21 @@ export const claimDueWebhookEvents = internalMutation({
         expired++;
         continue;
       }
+      const connection = await ctx.db.query("meta_connections").withIndex("by_page", (q: any) => q.eq("page_id", current.page_id)).unique();
+      const policyBlockReason = BLOCKED_PAGE_IDS.has(current.page_id) ? "BLOCKED_PAGE_ID" : BLOCKED_FORM_IDS.has(current.form_id ?? "") ? "BLOCKED_FORM_ID" : "";
+      if (policyBlockReason) {
+        await ctx.db.patch(current._id, { status: "blocked", terminal_at: now, terminal_reason: policyBlockReason, lease_started_at: undefined, last_error: policyBlockReason, updated_at: now });
+        await ctx.db.insert("audit_logs", { workspace_id: connection?.workspace_id ?? current.workspace_id ?? "unmapped", action: "meta_webhook_blocked", entity_type: "meta_webhook_event", entity_id: current._id.toString(), actor: "meta-webhook-sweeper", details: { reason: policyBlockReason, event_key: current.event_key }, created_at: new Date(now).toISOString() });
+        continue;
+      }
+      if (!connection || connection.status !== "verified") {
+        await ctx.db.patch(current._id, { status: "pending", next_attempt_at: now + retryDelayMs(Math.max(1, current.attempt_count + 1)), terminal_at: undefined, terminal_reason: undefined, lease_started_at: undefined, last_error: "NO_VERIFIED_META_CONNECTION", updated_at: now });
+        continue;
+      }
       if (current.attempt_count >= MAX_TRANSIENT_ATTEMPTS) {
         await ctx.db.patch(current._id, { status: "abandoned", terminal_at: now, terminal_reason: "MAX_TRANSIENT_ATTEMPTS", lease_started_at: undefined, updated_at: now });
         continue;
       }
-      const connection = await ctx.db.query("meta_connections").withIndex("by_page", (q: any) => q.eq("page_id", current.page_id)).unique();
-      const blockReason = BLOCKED_PAGE_IDS.has(current.page_id) ? "BLOCKED_PAGE_ID" : BLOCKED_FORM_IDS.has(current.form_id ?? "") ? "BLOCKED_FORM_ID" : (!connection || connection.status !== "verified" ? "NO_VERIFIED_META_CONNECTION" : "");
-      if (blockReason) {
-        await ctx.db.patch(current._id, { status: "blocked", terminal_at: now, terminal_reason: blockReason, lease_started_at: undefined, last_error: blockReason, updated_at: now });
-        await ctx.db.insert("audit_logs", { workspace_id: connection?.workspace_id ?? current.workspace_id ?? "unmapped", action: "meta_webhook_blocked", entity_type: "meta_webhook_event", entity_id: current._id.toString(), actor: "meta-webhook-sweeper", details: { reason: blockReason, event_key: current.event_key }, created_at: new Date(now).toISOString() });
-        continue;
-      }
-      if (!connection || connection.status !== "verified") continue;
       const verifiedAt = connection.verified_at;
       const verifiedAfterReceipt = typeof verifiedAt === "number" && verifiedAt >= current.received_at ? verifiedAt : current.last_verified_at;
       await ctx.db.patch(current._id, { status: "processing", attempt_count: current.attempt_count + 1, lease_started_at: now, next_attempt_at: now, last_verified_at: verifiedAfterReceipt, last_error: undefined, workspace_id: connection!.workspace_id, updated_at: now });
@@ -210,7 +222,7 @@ export const sweepWebhookEvents = internalAction({
         try {
           const retrievedLead = await retrieveLead(event.leadgen_id, pageAccessToken);
           const result = await ctx.runMutation(internal.meta.recordWebhook, { page_id: event.page_id, leadgen_id: event.leadgen_id, form_id: event.form_id, created_time: event.created_time || String(retrievedLead?.created_time ?? ""), retrieved_lead: retrievedLead });
-          if (!result?.ok) { failed++; await ctx.runMutation(internal.meta.markWebhookFailure, { event_key: event.event_key, error_kind: "PERSISTENCE_REJECTED", transient: false }); }
+          if (!result?.ok) { failed++; const reason = typeof result?.reason === "string" ? result.reason : "PERSISTENCE_REJECTED"; await ctx.runMutation(internal.meta.markWebhookFailure, { event_key: event.event_key, error_kind: reason, transient: reason === "NO_VERIFIED_META_CONNECTION" }); }
         } catch (error) {
           failed++;
           const message = error instanceof Error ? error.message : "META_LEAD_RETRIEVAL_FAILED";
@@ -239,11 +251,15 @@ export const recordWebhook = internalMutation({
     const idempotencyKey = "meta:" + args.page_id + ":" + args.leadgen_id;
     const webhookEvent = await ctx.db.query("meta_webhook_events").withIndex("by_event_key", (q: any) => q.eq("event_key", idempotencyKey)).unique();
     if (!webhookEvent) return { ok: false, reason: "EVENT_NOT_ENQUEUED" };
-    if (!connection || connection.status !== "verified" || BLOCKED_PAGE_IDS.has(args.page_id) || BLOCKED_FORM_IDS.has(args.form_id)) {
-      const reason = BLOCKED_PAGE_IDS.has(args.page_id) ? "BLOCKED_PAGE_ID" : BLOCKED_FORM_IDS.has(args.form_id) ? "BLOCKED_FORM_ID" : "NO_VERIFIED_META_CONNECTION";
-      if (webhookEvent && webhookEvent.status !== "processed") await ctx.db.patch(webhookEvent._id, { status: "blocked", terminal_at: Date.now(), terminal_reason: reason, lease_started_at: undefined, last_error: reason, updated_at: Date.now() });
-      await ctx.db.insert("audit_logs", { workspace_id: connection?.workspace_id ?? "unmapped", action: "meta_webhook_rejected", entity_type: "meta_webhook", actor: "meta-webhook", details: { reason, event_key: idempotencyKey }, created_at: new Date().toISOString() });
-      return { ok: false, reason };
+    const policyBlockReason = BLOCKED_PAGE_IDS.has(args.page_id) ? "BLOCKED_PAGE_ID" : BLOCKED_FORM_IDS.has(args.form_id) ? "BLOCKED_FORM_ID" : "";
+    if (policyBlockReason) {
+      if (webhookEvent && webhookEvent.status !== "processed") await ctx.db.patch(webhookEvent._id, { status: "blocked", terminal_at: Date.now(), terminal_reason: policyBlockReason, lease_started_at: undefined, last_error: policyBlockReason, updated_at: Date.now() });
+      await ctx.db.insert("audit_logs", { workspace_id: connection?.workspace_id ?? "unmapped", action: "meta_webhook_rejected", entity_type: "meta_webhook", actor: "meta-webhook", details: { reason: policyBlockReason, event_key: idempotencyKey }, created_at: new Date().toISOString() });
+      return { ok: false, reason: policyBlockReason };
+    }
+    if (!connection || connection.status !== "verified") {
+      if (webhookEvent && webhookEvent.status !== "processed") await ctx.db.patch(webhookEvent._id, { status: "pending", next_attempt_at: Date.now() + retryDelayMs(Math.max(1, webhookEvent.attempt_count)), terminal_at: undefined, terminal_reason: undefined, lease_started_at: undefined, last_error: "NO_VERIFIED_META_CONNECTION", updated_at: Date.now() });
+      return { ok: false, reason: "NO_VERIFIED_META_CONNECTION" };
     }
     if (webhookEvent && webhookEvent.status !== "processing") {
       return { ok: webhookEvent.status === "processed", duplicate: true, reason: webhookEvent.status === "blocked" ? "BLOCKED_EVENT" : "EVENT_NOT_PROCESSING" };
