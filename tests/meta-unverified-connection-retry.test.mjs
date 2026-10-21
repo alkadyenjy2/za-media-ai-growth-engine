@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import { createRequire } from "node:module";
 import { mkdirSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -20,7 +21,7 @@ const { buildSync } = loadEsbuild();
 mkdirSync(resolve(root, "node_modules/.cache"), { recursive: true });
 const bundlePath = resolve(root, "node_modules/.cache/meta-unverified-connection-retry.cjs");
 buildSync({ entryPoints: [resolve(root, "convex/meta.ts")], bundle: true, platform: "node", format: "cjs", packages: "external", outfile: bundlePath });
-const { enqueueWebhookEvent, claimDueWebhookEvents } = requireFromRoot(bundlePath);
+const { enqueueWebhookEvent, claimDueWebhookEvents, webhook } = requireFromRoot(bundlePath);
 
 function makeContext() {
   let event = null;
@@ -120,4 +121,31 @@ test("explicitly blocklisted Meta pages remain terminal", async () => {
   assert.equal(state.event.status, "blocked");
   assert.equal(state.event.terminal_reason, "BLOCKED_PAGE_ID");
   assert.equal(state.audit.length, 1);
+});
+
+test("durably queued event awaiting verification is acknowledged without Meta redelivery", async () => {
+  const previousSecret = process.env.META_APP_SECRET;
+  const previousVerifyToken = process.env.META_VERIFY_TOKEN;
+  const secret = "test-secret-only";
+  process.env.META_APP_SECRET = secret;
+  process.env.META_VERIFY_TOKEN = "test-verify-token-only";
+  const body = JSON.stringify({
+    object: "page",
+    entry: [{ id: "test-page-not-blocklisted", changes: [{ field: "leadgen", value: { page_id: "test-page-not-blocklisted", leadgen_id: "test-lead-awaiting-verification", form_id: "test-form" } }] }],
+  });
+  const signature = "sha256=" + createHmac("sha256", secret).update(body).digest("hex");
+  try {
+    const response = await webhook._handler({
+      runMutation: async () => ({ shouldRetrieve: false, status: "pending", retryable: true, durable: true, event_key: "meta:test-page-not-blocklisted:test-lead-awaiting-verification" }),
+    }, new Request("https://local.test/meta-webhook", {
+      method: "POST",
+      headers: { "x-hub-signature-256": signature },
+      body,
+    }));
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).accepted, true);
+  } finally {
+    if (previousSecret === undefined) delete process.env.META_APP_SECRET; else process.env.META_APP_SECRET = previousSecret;
+    if (previousVerifyToken === undefined) delete process.env.META_VERIFY_TOKEN; else process.env.META_VERIFY_TOKEN = previousVerifyToken;
+  }
 });

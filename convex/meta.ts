@@ -430,8 +430,8 @@ export const webhook = httpAction(async (ctx, request) => {
       try {
         const queued = await ctx.runMutation(internal.meta.enqueueWebhookEvent, { page_id: pageId, leadgen_id: leadgenId, form_id: formId, created_time: String(value.created_time ?? ""), received_at: Date.now() });
         if (!queued.shouldRetrieve) {
-          const durableTerminal = queued.status === "processed" || queued.status === "blocked" || queued.status === "abandoned";
-          results.push({ ok: durableTerminal, duplicate: !!queued.duplicate, leadgen_id: leadgenId, reason: queued.status, retryable: !durableTerminal, durable: durableTerminal });
+          const durable = queued.durable === true || ["processed", "blocked", "abandoned", "pending", "processing"].includes(queued.status);
+          results.push({ ok: durable, duplicate: !!queued.duplicate, leadgen_id: leadgenId, reason: queued.status, retryable: !!queued.retryable, durable });
           continue;
         }
         if (!pageAccessToken) {
