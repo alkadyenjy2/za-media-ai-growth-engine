@@ -116,5 +116,9 @@ export const webhook = httpAction(async (ctx, request) => {
       }
     }
   }
-  return Response.json({ accepted: true, processed: results.length, results });
+  const hasProcessingFailure = results.some((result: any) => result?.ok === false);
+  return Response.json(
+    { accepted: !hasProcessingFailure, processed: results.length, results },
+    { status: hasProcessingFailure ? 503 : 200 },
+  );
 });
