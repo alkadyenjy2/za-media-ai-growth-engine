@@ -1,5 +1,5 @@
 import { ArrowRight, Brain, ChartLine, Clock, Search, Sparkles, Target, TrendingUp, Users, Zap } from '../lib/icons'
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 
 const problems = [
   { icon: Users, title: 'Leads falling through the cracks', desc: 'Prospects contact you but nobody follows up in time.' },
@@ -36,6 +36,9 @@ const steps = [
 
 export function LandingPage({ onEnterDashboard, initialOpen = false }: { onEnterDashboard: () => void; initialOpen?: boolean }) {
   const [showForm, setShowForm] = useState(initialOpen)
+
+  // Keep the form state in sync when client-side navigation changes the route to /audit.
+  useEffect(() => { setShowForm(initialOpen) }, [initialOpen])
   const [form, setForm] = useState({ full_name: '', email: '', phone: '', company: '' })
   const [submitted, setSubmitted] = useState(false)
   const [saving, setSaving] = useState(false)
