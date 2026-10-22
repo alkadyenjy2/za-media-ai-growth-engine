@@ -2,14 +2,12 @@ name: Convex Production Deploy
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "convex/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - ".github/workflows/convex-production-deploy.yml"
+    inputs:
+      confirm_production_deploy:
+        description: "Confirm deploying the reviewed Convex backend to production"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -20,20 +18,26 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploy Convex backend
+    name: Validate and deploy Convex backend
     runs-on: ubuntu-latest
+    environment: production
     steps:
-      - name: Require main branch and production deploy key
+      - name: Require explicit confirmation, main branch, and production deploy key
         shell: bash
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+          CONFIRM_PRODUCTION_DEPLOY: ${{ inputs.confirm_production_deploy }}
         run: |
+          if [ "$CONFIRM_PRODUCTION_DEPLOY" != "true" ]; then
+            echo "::error::Set confirm_production_deploy=true only after reviewing all validation evidence."
+            exit 1
+          fi
           if [ "$GITHUB_REF" != "refs/heads/main" ]; then
             echo "::error::Production backend deployments may only run from main."
             exit 1
           fi
           if [ -z "$CONVEX_DEPLOY_KEY" ]; then
-            echo "::error::Missing repository secret CONVEX_DEPLOY_KEY. Add a production-scoped Convex deploy key in GitHub Settings > Secrets and variables > Actions, then rerun this workflow."
+            echo "::error::Missing repository secret CONVEX_DEPLOY_KEY. Add a production-scoped Convex deploy key in GitHub Settings > Secrets and variables > Actions."
             exit 1
           fi
       - uses: actions/checkout@v4
@@ -46,8 +50,17 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Verify public lead intake
+        run: pnpm run test:public-lead
+      - name: Verify Meta Graph API version policy
+        run: pnpm run test:meta-version
+      - name: Typecheck application
+        run: pnpm run typecheck
+      - name: Typecheck Convex Meta webhook
+        run: pnpm exec tsc --noEmit --target ES2020 --module ESNext --moduleResolution bundler --skipLibCheck convex/meta.ts
+      - name: Build application
+        run: pnpm run build
       - name: Deploy production backend
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
-        run: |
-          pnpm exec convex deploy --typecheck enable --message "GitHub Actions production deploy: ${GITHUB_SHA}"
+        run: pnpm exec convex deploy --typecheck enable --message "Reviewed manual production deploy: ${GITHUB_SHA}"
