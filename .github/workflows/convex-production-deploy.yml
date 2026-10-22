@@ -54,6 +54,8 @@ jobs:
         run: pnpm run test:public-lead
       - name: Verify Meta Graph API version policy
         run: pnpm run test:meta-version
+      - name: Verify Meta webhook retry behavior
+        run: pnpm run test:meta-webhook-retry
       - name: Typecheck application
         run: pnpm run typecheck
       - name: Typecheck Convex Meta webhook
