@@ -48,9 +48,12 @@ export function LandingPage({ onEnterDashboard, initialOpen = false }: { onEnter
     e.preventDefault(); setSaving(true); setError('')
     try {
       const configuredSiteUrl = (import.meta.env.VITE_CONVEX_SITE_URL || '').trim()
+      // Keep public lead intake usable on static hosting even when its optional build variable is absent.
+      // This is the verified canonical production Convex HTTP-actions origin for ZA Media.
+      const siteUrlValue = configuredSiteUrl || 'https://qualified-nightingale-421.eu-west-1.convex.site'
       let siteUrl: URL
       try {
-        siteUrl = new URL(configuredSiteUrl)
+        siteUrl = new URL(siteUrlValue)
       } catch {
         throw new Error('Lead intake is not configured. Please try again later.')
       }
