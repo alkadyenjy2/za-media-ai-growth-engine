@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --noEmit",
     "preview": "vite preview",
-    "test:public-lead": "node scripts/verify-public-lead.mjs",
+    "test:public-lead": "node scripts/verify-public-lead.mjs && node --test tests/workspace-isolation.test.mjs",
     "test:meta-version": "node --test tests/meta-graph-version.test.mjs",
     "test:meta-webhook-retry": "node --test tests/meta-webhook-retry.test.mjs"
   },
