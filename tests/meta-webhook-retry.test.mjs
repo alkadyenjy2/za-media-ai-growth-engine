@@ -42,6 +42,7 @@ test("Meta Graph error response bodies are not surfaced to webhook callers", () 
 });
 
 test("new lead idempotency keys are scoped to both page and lead while legacy keys remain checked", () => {
-  assert.match(source, /idempotency_key: "meta:" \+ args\.page_id \+ ":" \+ args\.leadgen_id/);
+  assert.match(source, /const pageScopedIdempotencyKey = "meta:" \+ args\.page_id \+ ":" \+ args\.leadgen_id/);
+  assert.match(source, /idempotency_key: pageScopedIdempotencyKey/);
   assert.match(source, /idempotency_key: "meta:" \+ args\.leadgen_id/);
 });
