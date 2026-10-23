@@ -42,7 +42,7 @@ export const recordWebhookReceipt = internalMutation({
     if (existing?.status === "processed") return { ok: true, duplicate: true, status: "processed", event_key };
     const nowMs = Date.now();
     const existingIsFreshlyProcessing = existing?.status === "processing" && nowMs - Date.parse(existing.updated_at) < 5 * 60 * 1000;
-    if (existingIsFreshlyProcessing) return { ok: true, duplicate: true, status: "processing", event_key };
+    if (existingIsFreshlyProcessing) return { ok: false, duplicate: true, status: "processing", reason: "EVENT_PROCESSING", event_key };
     const connection = await ctx.db.query("meta_connections").withIndex("by_page", (q: any) => q.eq("page_id", args.page_id)).unique();
     const verified = !!connection && connection.status === "verified" && !BLOCKED_PAGE_IDS.has(args.page_id);
     const now = new Date().toISOString();
