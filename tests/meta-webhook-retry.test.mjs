@@ -12,7 +12,7 @@ test("Meta webhook responds with retryable 503 when lead processing fails", () =
 
 test("Meta lead persistence retains idempotency checks before inserting leads", () => {
   assert.match(source, /eq\("idempotency_key", "meta:" \+ args\.leadgen_id\)/);
-  assert.match(source, /row\.action === "meta_webhook_received" && row\.details\?\.leadgen_id === args\.leadgen_id/);
+  assert.match(source, /row\.action === "meta_webhook_received" && row\.details\?\.page_id === args\.page_id && row\.details\?\.leadgen_id === args\.leadgen_id/);
 });
 
 test("Failed Graph API retrieval is surfaced as a processing failure", () => {
@@ -44,5 +44,5 @@ test("Meta Graph error response bodies are not surfaced to webhook callers", () 
 test("new lead idempotency keys are scoped to both page and lead while legacy keys remain checked", () => {
   assert.match(source, /const pageScopedIdempotencyKey = "meta:" \+ args\.page_id \+ ":" \+ args\.leadgen_id/);
   assert.match(source, /idempotency_key: pageScopedIdempotencyKey/);
-  assert.match(source, /idempotency_key: "meta:" \+ args\.leadgen_id/);
+  assert.match(source, /eq\("idempotency_key", "meta:" \+ args\.leadgen_id\)/);
 });
