@@ -86,8 +86,9 @@ export const update = mutation({
   args: { table: tableValidator, id: v.string(), data: v.any() },
   handler: async (ctx, args) => {
     const ws = await requireWorkspace(ctx);
-    const id = args.id as any;
-    const existing = await ctx.db.get(id);
+    const normalizedId = ctx.db.normalizeId(args.table, args.id);
+    if (!normalizedId) throw new Error("Record not found");
+    const existing = await ctx.db.get(args.table, normalizedId);
     if (!existing || (existing as any).workspace_id !== ws!._id.toString()) throw new Error("Record not found");
     const patch = { ...(args.data as Record<string, any>) };
     // Workspace ownership is assigned by the server and must never be client-editable.
@@ -98,19 +99,20 @@ export const update = mutation({
     } else {
       delete patch.updated_at;
     }
-    await ctx.db.patch(id, patch as any);
-    const next = await ctx.db.get(id);
-    return next ? { ...(next as any), id: id.toString(), _id: id.toString() } : null;
+    await ctx.db.patch(args.table, normalizedId, patch as any);
+    const next = await ctx.db.get(args.table, normalizedId);
+    return next ? { ...(next as any), id: normalizedId.toString(), _id: normalizedId.toString() } : null;
   },
 });
 export const remove = mutation({
   args: { table: tableValidator, id: v.string() },
   handler: async (ctx, args) => {
     const ws = await requireWorkspace(ctx);
-    const id = args.id as any;
-    const existing = await ctx.db.get(id);
+    const normalizedId = ctx.db.normalizeId(args.table, args.id);
+    if (!normalizedId) throw new Error("Record not found");
+    const existing = await ctx.db.get(args.table, normalizedId);
     if (!existing || (existing as any).workspace_id !== ws!._id.toString()) throw new Error("Record not found");
-    await ctx.db.delete(id);
+    await ctx.db.delete(args.table, normalizedId);
     return true;
   },
 });
