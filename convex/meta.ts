@@ -177,7 +177,9 @@ export const webhook = httpAction(async (ctx, request) => {
         });
         results.push(result);
       } catch (error) {
-        const reason = error instanceof Error ? error.message : "META_LEAD_RETRIEVAL_FAILED";
+        const reason = error instanceof Error && /^META_LEAD_RETRIEVAL_FAILED:\\d{3}$/.test(error.message)
+          ? error.message
+          : "META_WEBHOOK_PROCESSING_FAILED";
         try { await ctx.runMutation(internal.meta.markWebhookStatus, { event_key: eventKey, status: "retryable_failed", last_error: reason.slice(0, 500) }); } catch {}
         results.push({ ok: false, leadgen_id: leadgenId, reason });
       }
