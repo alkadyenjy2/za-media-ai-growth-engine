@@ -30,7 +30,7 @@ async function retrieveLead(leadgenId: string, pageAccessToken: string) {
   url.searchParams.set("fields", "id,created_time,field_data,ad_id,form_id,campaign_id");
   url.searchParams.set("access_token", pageAccessToken);
   const response = await fetch(url.toString(), { method: "GET" });
-  if (!response.ok) { const errorText = await response.text(); throw new Error("META_LEAD_RETRIEVAL_FAILED:" + response.status + ":" + errorText.slice(0, 500)); }
+  if (!response.ok) throw new Error("META_LEAD_RETRIEVAL_FAILED:" + response.status);
   return await response.json();
 }
 
@@ -87,11 +87,14 @@ export const recordWebhook = internalMutation({
       return { ok: false, reason: "NO_VERIFIED_META_CONNECTION" };
     }
     if (BLOCKED_PAGE_IDS.has(args.page_id)) return { ok: false, reason: "BLOCKED_PAGE_ID" };
-    const existingLead = await ctx.db.query("leads").withIndex("by_idempotency", (q: any) => q.eq("idempotency_key", "meta:" + args.leadgen_id)).unique();
+    const pageScopedIdempotencyKey = "meta:" + args.page_id + ":" + args.leadgen_id;
+    const existingLead = await ctx.db.query("leads").withIndex("by_idempotency", (q: any) => q.eq("idempotency_key", pageScopedIdempotencyKey)).unique();
     if (existingLead) return { ok: true, duplicate: true, lead_id: existingLead._id.toString() };
+    const legacyLead = await ctx.db.query("leads").withIndex("by_idempotency", (q: any) => q.eq("idempotency_key", "meta:" + args.leadgen_id)).unique();
+    if (legacyLead) return { ok: true, duplicate: true, lead_id: legacyLead._id.toString() };
 
     const auditRows = await ctx.db.query("audit_logs").withIndex("by_workspace", (q: any) => q.eq("workspace_id", connection.workspace_id)).collect();
-    const existing = auditRows.find((row: any) => row.action === "meta_webhook_received" && row.details?.leadgen_id === args.leadgen_id);
+    const existing = auditRows.find((row: any) => row.action === "meta_webhook_received" && row.details?.page_id === args.page_id && row.details?.leadgen_id === args.leadgen_id);
     if (existing) return { ok: true, duplicate: true, evidence_id: existing._id.toString() };
 
     const lead = args.retrieved_lead ?? {};
