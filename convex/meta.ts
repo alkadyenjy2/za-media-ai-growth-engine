@@ -40,6 +40,9 @@ export const recordWebhookReceipt = internalMutation({
     const event_key = args.page_id + ":" + args.leadgen_id;
     const existing = await ctx.db.query("meta_webhook_events").withIndex("by_event_key", (q: any) => q.eq("event_key", event_key)).unique();
     if (existing?.status === "processed") return { ok: true, duplicate: true, status: "processed", event_key };
+    const nowMs = Date.now();
+    const existingIsFreshlyProcessing = existing?.status === "processing" && nowMs - Date.parse(existing.updated_at) < 5 * 60 * 1000;
+    if (existingIsFreshlyProcessing) return { ok: true, duplicate: true, status: "processing", event_key };
     const connection = await ctx.db.query("meta_connections").withIndex("by_page", (q: any) => q.eq("page_id", args.page_id)).unique();
     const verified = !!connection && connection.status === "verified" && !BLOCKED_PAGE_IDS.has(args.page_id);
     const now = new Date().toISOString();
@@ -61,7 +64,7 @@ export const recordWebhookReceipt = internalMutation({
       });
     }
     if (!verified) return { ok: false, reason: BLOCKED_PAGE_IDS.has(args.page_id) ? "BLOCKED_PAGE_ID" : "NO_VERIFIED_META_CONNECTION", event_key };
-    return { ok: true, duplicate: !!existing, status: "processing", event_key };
+    return { ok: true, duplicate: false, status: "processing", event_key };
   },
 });
 
