@@ -46,3 +46,7 @@ test("new lead idempotency keys are scoped to both page and lead while legacy ke
   assert.match(source, /idempotency_key: pageScopedIdempotencyKey/);
   assert.match(source, /eq\("idempotency_key", "meta:" \+ args\.leadgen_id\)/);
 });
+
+test("in-flight duplicate deliveries remain retryable until the first processing attempt completes", () => {
+  assert.match(source, /if \(existingIsFreshlyProcessing\) return \{ ok: false, duplicate: true, status: "processing", reason: "EVENT_PROCESSING", event_key \}/);
+});
