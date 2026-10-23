@@ -50,3 +50,10 @@ test("new lead idempotency keys are scoped to both page and lead while legacy ke
 test("in-flight duplicate deliveries remain retryable until the first processing attempt completes", () => {
   assert.match(source, /if \(existingIsFreshlyProcessing\) return \{ ok: false, duplicate: true, status: "processing", reason: "EVENT_PROCESSING", event_key \}/);
 });
+
+
+test("unexpected internal processing errors are sanitized before webhook response", () => {
+  const webhook = source.slice(source.indexOf("export const webhook"));
+  assert.doesNotMatch(webhook, /const reason = error instanceof Error \? error\.message/);
+  assert.match(webhook, /META_WEBHOOK_PROCESSING_FAILED/);
+});
