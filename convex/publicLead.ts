@@ -142,7 +142,8 @@ export const submit = httpAction(async (ctx, request) => {
     return leadJsonResponse(result, result.duplicate ? 200 : 201, origin);
   } catch (error) {
     return leadJsonResponse(
-      { ok: false, error: error instanceof Error ? error.message : "Lead intake failed" },
+      // Do not expose Convex stack traces, internal file paths, or workspace configuration errors to public callers.
+      { ok: false, error: "Lead intake failed" },
       400,
       origin,
     );
