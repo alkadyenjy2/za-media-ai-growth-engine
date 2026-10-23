@@ -12,7 +12,7 @@ test("Meta webhook responds with retryable 503 when lead processing fails", () =
 
 test("Meta lead persistence retains idempotency checks before inserting leads", () => {
   assert.match(source, /eq\("idempotency_key", "meta:" \+ args\.leadgen_id\)/);
-  assert.match(source, /row\.action === "meta_webhook_received" && row\.details\?\.leadgen_id === args\.leadgen_id/);
+  assert.match(source, /row\.action === "meta_webhook_received" && row\.details\?\.page_id === args\.page_id && row\.details\?\.leadgen_id === args\.leadgen_id/);
 });
 
 test("Failed Graph API retrieval is surfaced as a processing failure", () => {
@@ -34,4 +34,26 @@ test("durable webhook event ledger is indexed by stable page and lead ID and tra
   assert.match(schema, /status: v\.union\(v\.literal\("received"\), v\.literal\("processing"\), v\.literal\("processed"\), v\.literal\("retryable_failed"\)\)/);
   assert.match(source, /args\.page_id \+ ":" \+ args\.leadgen_id/);
   assert.match(source, /recordWebhookReceipt/);
+});
+
+test("Meta Graph error response bodies are not surfaced to webhook callers", () => {
+  assert.doesNotMatch(source, /const errorText = await response\.text\(\)/);
+  assert.match(source, /META_LEAD_RETRIEVAL_FAILED/);
+});
+
+test("new lead idempotency keys are scoped to both page and lead while legacy keys remain checked", () => {
+  assert.match(source, /const pageScopedIdempotencyKey = "meta:" \+ args\.page_id \+ ":" \+ args\.leadgen_id/);
+  assert.match(source, /idempotency_key: pageScopedIdempotencyKey/);
+  assert.match(source, /eq\("idempotency_key", "meta:" \+ args\.leadgen_id\)/);
+});
+
+test("in-flight duplicate deliveries remain retryable until the first processing attempt completes", () => {
+  assert.match(source, /if \(existingIsFreshlyProcessing\) return \{ ok: false, duplicate: true, status: "processing", reason: "EVENT_PROCESSING", event_key \}/);
+});
+
+
+test("unexpected internal processing errors are sanitized before webhook response", () => {
+  const webhook = source.slice(source.indexOf("export const webhook"));
+  assert.doesNotMatch(webhook, /const reason = error instanceof Error \? error\.message/);
+  assert.match(webhook, /META_WEBHOOK_PROCESSING_FAILED/);
 });
