@@ -35,3 +35,13 @@ test("durable webhook event ledger is indexed by stable page and lead ID and tra
   assert.match(source, /args\.page_id \+ ":" \+ args\.leadgen_id/);
   assert.match(source, /recordWebhookReceipt/);
 });
+
+test("Meta Graph error response bodies are not surfaced to webhook callers", () => {
+  assert.doesNotMatch(source, /const errorText = await response\.text\(\)/);
+  assert.match(source, /META_LEAD_RETRIEVAL_FAILED/);
+});
+
+test("new lead idempotency keys are scoped to both page and lead while legacy keys remain checked", () => {
+  assert.match(source, /idempotency_key: "meta:" \+ args\.page_id \+ ":" \+ args\.leadgen_id/);
+  assert.match(source, /idempotency_key: "meta:" \+ args\.leadgen_id/);
+});
