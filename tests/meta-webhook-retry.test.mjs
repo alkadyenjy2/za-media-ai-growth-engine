@@ -16,9 +16,8 @@ test("Meta lead persistence retains idempotency checks before inserting leads", 
 });
 
 test("Failed Graph API retrieval is surfaced as a processing failure", () => {
-  assert.match(source, /results\.push\(\{ ok: false, leadgen_id: leadgenId, reason:/);
+  assert.match(source, /results\.push\(\{ ok: false, leadgen_id: leadgenId, reason/);
 });
-
 
 test("webhook durably records each signed lead event before calling Meta Graph", () => {
   const receipt = source.indexOf("ctx.runMutation(internal.meta.recordWebhookReceipt");
@@ -33,6 +32,6 @@ test("durable webhook event ledger is indexed by stable page and lead ID and tra
   assert.match(schema, /meta_webhook_events: defineTable/);
   assert.match(schema, /by_event_key/);
   assert.match(schema, /status: v\.union\(v\.literal\("received"\), v\.literal\("processing"\), v\.literal\("processed"\), v\.literal\("retryable_failed"\)\)/);
-  assert.match(source, /page_id \+ ":" \+ leadgen_id/);
+  assert.match(source, /args\.page_id \+ ":" \+ args\.leadgen_id/);
   assert.match(source, /recordWebhookReceipt/);
 });
