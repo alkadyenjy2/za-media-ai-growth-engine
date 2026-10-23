@@ -90,6 +90,8 @@ export const update = mutation({
     const existing = await ctx.db.get(id);
     if (!existing || (existing as any).workspace_id !== ws!._id.toString()) throw new Error("Record not found");
     const patch = { ...(args.data as Record<string, any>) };
+    // Workspace ownership is assigned by the server and must never be client-editable.
+    delete patch.workspace_id;
     // Only tables declaring updated_at in the Convex schema may receive it.
     if (args.table === "companies" || args.table === "leads" || args.table === "meta_connections") {
       patch.updated_at = new Date().toISOString();
