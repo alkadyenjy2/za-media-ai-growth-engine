@@ -4,10 +4,10 @@ import test from "node:test";
 
 const source = await readFile(new URL("../convex/meta.ts", import.meta.url), "utf8");
 
-test("Meta webhook responds with retryable 503 when lead processing fails", () => {
-  assert.match(source, /const hasProcessingFailure = results\.some\(\(result: any\) => result\?\.ok === false\)/);
-  assert.match(source, /status: hasProcessingFailure \? 503 : 200/);
-  assert.match(source, /accepted: !hasProcessingFailure/);
+test("Meta webhook distinguishes retryable and permanent processing failures", () => {
+  assert.match(source, /if \(hasTemporaryFailure\)[\s\S]*?status: 503/);
+  assert.match(source, /if \(hasPermanentFailure\)[\s\S]*?status: 422/);
+  assert.match(source, /accepted: false, processed: results\.length, results/);
 });
 
 test("Meta lead persistence retains idempotency checks before inserting leads", () => {
@@ -15,8 +15,9 @@ test("Meta lead persistence retains idempotency checks before inserting leads", 
   assert.match(source, /row\.action === "meta_webhook_received" && row\.details\?\.page_id === args\.page_id && row\.details\?\.leadgen_id === args\.leadgen_id/);
 });
 
-test("Failed Graph API retrieval is surfaced as a processing failure", () => {
-  assert.match(source, /results\.push\(\{ ok: false, leadgen_id: leadgenId, reason/);
+test("Failed Graph API retrieval is classified for safe provider retry", () => {
+  assert.match(source, /results\.push\(\{ ok: false, leadgen_id: leadgenId, reason, retryable \}\)/);
+  assert.match(source, /const retryable = isRetryableMetaWebhookError\(error\)/);
 });
 
 test("webhook durably records each signed lead event before calling Meta Graph", () => {
@@ -55,5 +56,5 @@ test("in-flight duplicate deliveries remain retryable until the first processing
 test("unexpected internal processing errors are sanitized before webhook response", () => {
   const webhook = source.slice(source.indexOf("export const webhook"));
   assert.doesNotMatch(webhook, /const reason = error instanceof Error \? error\.message/);
-  assert.match(webhook, /META_WEBHOOK_PROCESSING_FAILED/);
+  assert.match(webhook, /TEMPORARY_WEBHOOK_PROCESSING_FAILURE/);
 });
