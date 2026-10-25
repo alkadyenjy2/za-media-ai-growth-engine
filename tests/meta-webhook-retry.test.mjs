@@ -12,7 +12,7 @@ test("Meta webhook distinguishes retryable and permanent processing failures", (
 
 test("Meta lead persistence retains idempotency checks before inserting leads", () => {
   assert.match(source, /eq\("idempotency_key", "meta:" \+ args\.leadgen_id\)/);
-  assert.match(source, /row\.action === "meta_webhook_received" && row\.details\?\.page_id === args\.page_id && row\.details\?\.leadgen_id === args\.leadgen_id/);
+  assert.match(source, /row\.action === "meta_webhook_received" && row\.details\?\.leadgen_id === args\.leadgen_id && row\.details\?\.page_id === args\.page_id/);
 });
 
 test("Failed Graph API retrieval is classified for safe provider retry", () => {
