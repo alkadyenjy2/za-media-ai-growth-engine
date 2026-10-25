@@ -1,7 +1,8 @@
 import { v } from "convex/values";
-import { httpAction, internalMutation } from "./_generated/server";
+import { httpAction, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { resolveMetaGraphApiVersion } from "./metaVersion.js";
+import { isRetryableMetaWebhookError } from "./metaRetry.js";
 
 const BLOCKED_PAGE_IDS = new Set(["179969831856298"]);
 const GRAPH_API_VERSION = resolveMetaGraphApiVersion();
@@ -30,7 +31,11 @@ async function retrieveLead(leadgenId: string, pageAccessToken: string) {
   url.searchParams.set("fields", "id,created_time,field_data,ad_id,form_id,campaign_id");
   url.searchParams.set("access_token", pageAccessToken);
   const response = await fetch(url.toString(), { method: "GET" });
-  if (!response.ok) throw new Error("META_LEAD_RETRIEVAL_FAILED:" + response.status);
+  if (!response.ok) {
+    // Never surface raw Graph API error bodies through the public webhook.
+    await response.text().catch(() => {});
+    throw new Error("META_LEAD_RETRIEVAL_FAILED:" + response.status + ":upstream_error");
+  }
   return await response.json();
 }
 
@@ -69,11 +74,21 @@ export const recordWebhookReceipt = internalMutation({
 });
 
 export const markWebhookStatus = internalMutation({
-  args: { event_key: v.string(), status: v.union(v.literal("processed"), v.literal("retryable_failed")), last_error: v.optional(v.string()) },
+  args: { event_key: v.string(), status: v.union(v.literal("processed"), v.literal("retryable_failed"), v.literal("permanent_failed")), last_error: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const event = await ctx.db.query("meta_webhook_events").withIndex("by_event_key", (q: any) => q.eq("event_key", args.event_key)).unique();
     if (!event) return { ok: false, reason: "EVENT_NOT_FOUND" };
     await ctx.db.patch(event._id, { status: args.status, last_error: args.last_error, updated_at: new Date().toISOString() });
+    return { ok: true };
+  },
+});
+
+export const checkWebhookConnection = internalQuery({
+  args: { page_id: v.string() },
+  handler: async (ctx, args) => {
+    if (BLOCKED_PAGE_IDS.has(args.page_id)) return { ok: false, reason: "BLOCKED_PAGE_ID" };
+    const connection = await ctx.db.query("meta_connections").withIndex("by_page", (q: any) => q.eq("page_id", args.page_id)).unique();
+    if (!connection || connection.status !== "verified") return { ok: false, reason: "NO_VERIFIED_META_CONNECTION" };
     return { ok: true };
   },
 });
@@ -89,12 +104,13 @@ export const recordWebhook = internalMutation({
     if (BLOCKED_PAGE_IDS.has(args.page_id)) return { ok: false, reason: "BLOCKED_PAGE_ID" };
     const pageScopedIdempotencyKey = "meta:" + args.page_id + ":" + args.leadgen_id;
     const existingLead = await ctx.db.query("leads").withIndex("by_idempotency", (q: any) => q.eq("idempotency_key", pageScopedIdempotencyKey)).unique();
-    if (existingLead) return { ok: true, duplicate: true, lead_id: existingLead._id.toString() };
-    const legacyLead = await ctx.db.query("leads").withIndex("by_idempotency", (q: any) => q.eq("idempotency_key", "meta:" + args.leadgen_id)).unique();
-    if (legacyLead) return { ok: true, duplicate: true, lead_id: legacyLead._id.toString() };
+    // Preserve deduplication for records created before page-scoped keys were introduced.
+    const legacyLead = existingLead ? null : await ctx.db.query("leads").withIndex("by_idempotency", (q: any) => q.eq("idempotency_key", "meta:" + args.leadgen_id)).unique();
+    const duplicateLead = existingLead ?? legacyLead;
+    if (duplicateLead) return { ok: true, duplicate: true, lead_id: duplicateLead._id.toString(), retryable: false };
 
     const auditRows = await ctx.db.query("audit_logs").withIndex("by_workspace", (q: any) => q.eq("workspace_id", connection.workspace_id)).collect();
-    const existing = auditRows.find((row: any) => row.action === "meta_webhook_received" && row.details?.page_id === args.page_id && row.details?.leadgen_id === args.leadgen_id);
+    const existing = auditRows.find((row: any) => row.action === "meta_webhook_received" && row.details?.leadgen_id === args.leadgen_id && row.details?.page_id === args.page_id);
     if (existing) return { ok: true, duplicate: true, evidence_id: existing._id.toString() };
 
     const lead = args.retrieved_lead ?? {};
@@ -146,7 +162,9 @@ export const webhook = httpAction(async (ctx, request) => {
   let body: any;
   try { body = JSON.parse(rawBody); } catch { return new Response("Invalid JSON", { status: 400 }); }
   if (body.object !== "page") return Response.json({ accepted: true, ignored: true });
-  const results = [];
+  const results: Array<Record<string, unknown>> = [];
+  let hasTemporaryFailure = false;
+  let hasPermanentFailure = false;
   for (const entry of Array.isArray(body.entry) ? body.entry : []) {
     for (const change of Array.isArray(entry?.changes) ? entry.changes : []) {
       if (change?.field !== "leadgen") continue;
@@ -154,40 +172,57 @@ export const webhook = httpAction(async (ctx, request) => {
       const pageId = String(value.page_id ?? entry.id ?? "");
       const leadgenId = String(value.leadgen_id ?? "");
       const formId = String(value.form_id ?? "");
-      if (!pageId || !leadgenId) continue;
-      const createdTime = String(value.created_time ?? "");
+      if (!pageId || !leadgenId) {
+        results.push({ ok: false, leadgen_id: leadgenId, reason: "MISSING_REQUIRED_FIELDS", retryable: false });
+        hasPermanentFailure = true;
+        continue;
+      }
+      if (BLOCKED_PAGE_IDS.has(pageId)) {
+        results.push({ ok: false, leadgen_id: leadgenId, reason: "BLOCKED_PAGE_ID", retryable: false });
+        hasPermanentFailure = true;
+        continue;
+      }
       const eventKey = pageId + ":" + leadgenId;
       try {
-        // Persist the signed event before any external Graph API call so failures remain replayable.
+        // Persist the signed event before the external Graph API call. This keeps failed retrievals replayable.
         const receipt = await ctx.runMutation(internal.meta.recordWebhookReceipt, {
-          page_id: pageId, leadgen_id: leadgenId, form_id: formId, created_time: createdTime, raw_payload: value,
+          page_id: pageId, leadgen_id: leadgenId, form_id: formId, created_time: String(value.created_time ?? ""), raw_payload: value,
         });
         if (!receipt.ok || receipt.duplicate) {
           results.push({ ...receipt, leadgen_id: leadgenId });
+          if (!receipt.ok) {
+            if (receipt.reason === "EVENT_PROCESSING") hasTemporaryFailure = true;
+            else hasPermanentFailure = true;
+          }
           continue;
         }
         const retrievedLead = await retrieveLead(leadgenId, pageAccessToken);
-        const result = await ctx.runMutation(internal.meta.recordWebhook, {
+        const mutationResult = await ctx.runMutation(internal.meta.recordWebhook, {
           page_id: pageId, leadgen_id: leadgenId, form_id: formId,
           created_time: String(value.created_time ?? retrievedLead?.created_time ?? ""), raw_payload: value, retrieved_lead: retrievedLead,
         });
         await ctx.runMutation(internal.meta.markWebhookStatus, {
-          event_key: eventKey, status: result?.ok === false ? "retryable_failed" : "processed",
-          last_error: result?.ok === false ? String(result.reason ?? "WEBHOOK_PROCESSING_FAILED") : undefined,
+          event_key: eventKey, status: mutationResult?.ok === false ? "permanent_failed" : "processed",
+          last_error: mutationResult?.ok === false ? String(mutationResult.reason ?? "WEBHOOK_PROCESSING_FAILED") : undefined,
         });
-        results.push(result);
+        results.push({ ...mutationResult, leadgen_id: leadgenId });
+        if (!mutationResult.ok) hasPermanentFailure = true;
       } catch (error) {
-        const reason = error instanceof Error && /^META_LEAD_RETRIEVAL_FAILED:\d{3}$/.test(error.message)
-          ? error.message
-          : "META_WEBHOOK_PROCESSING_FAILED";
-        try { await ctx.runMutation(internal.meta.markWebhookStatus, { event_key: eventKey, status: "retryable_failed", last_error: reason.slice(0, 500) }); } catch {}
-        results.push({ ok: false, leadgen_id: leadgenId, reason });
+        const rawReason = error instanceof Error ? error.message : "";
+        const metaStatus = /^META_LEAD_RETRIEVAL_FAILED:([0-9]{3}):/.exec(rawReason)?.[1];
+        const reason = metaStatus ? "META_LEAD_RETRIEVAL_FAILED:" + metaStatus + ":upstream_error" : "TEMPORARY_WEBHOOK_PROCESSING_FAILURE";
+        const retryable = isRetryableMetaWebhookError(error);
+        try {
+          await ctx.runMutation(internal.meta.markWebhookStatus, {
+            event_key: eventKey, status: retryable ? "retryable_failed" : "permanent_failed", last_error: reason.slice(0, 500),
+          });
+        } catch {}
+        results.push({ ok: false, leadgen_id: leadgenId, reason, retryable });
+        if (retryable) hasTemporaryFailure = true; else hasPermanentFailure = true;
       }
     }
   }
-  const hasProcessingFailure = results.some((result: any) => result?.ok === false);
-  return Response.json(
-    { accepted: !hasProcessingFailure, processed: results.length, results },
-    { status: hasProcessingFailure ? 503 : 200 },
-  );
+  if (hasTemporaryFailure) return Response.json({ accepted: false, processed: results.length, results }, { status: 503 });
+  if (hasPermanentFailure) return Response.json({ accepted: false, processed: results.length, results }, { status: 422 });
+  return Response.json({ accepted: true, processed: results.length, results }, { status: 200 });
 });

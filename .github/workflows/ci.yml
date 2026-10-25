@@ -19,6 +19,8 @@ jobs:
       - run: npm run test:public-lead
       - run: npm run test:meta-version
       - run: npm run test:meta-webhook-retry
+      - run: npm run test:meta-retry
+      - run: npm run test:meta-webhook
       - run: npm run typecheck
-      - run: npx tsc --noEmit --target ES2020 --module ESNext --moduleResolution bundler --skipLibCheck convex/meta.ts
+      - run: npx tsc --noEmit --target ES2020 --module ESNext --moduleResolution bundler --skipLibCheck convex/meta.ts convex/core.ts
       - run: npm run build
