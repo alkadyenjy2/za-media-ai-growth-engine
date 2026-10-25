@@ -57,10 +57,14 @@ jobs:
         run: pnpm run test:meta-version
       - name: Verify Meta webhook retry behavior
         run: pnpm run test:meta-webhook-retry
+      - name: Verify Meta retry classification
+        run: pnpm run test:meta-retry
+      - name: Verify Meta webhook security and idempotency
+        run: pnpm run test:meta-webhook
       - name: Typecheck application
         run: pnpm run typecheck
       - name: Typecheck Convex Meta webhook
-        run: pnpm exec tsc --noEmit --target ES2020 --module ESNext --moduleResolution bundler --skipLibCheck convex/meta.ts
+        run: pnpm exec tsc --noEmit --target ES2020 --module ESNext --moduleResolution bundler --skipLibCheck convex/meta.ts convex/core.ts
       - name: Build application
         run: pnpm run build
       - name: Deploy production backend
