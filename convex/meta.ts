@@ -4,7 +4,6 @@ import { internal } from "./_generated/api";
 import { resolveMetaGraphApiVersion } from "./metaVersion.js";
 
 const BLOCKED_PAGE_IDS = new Set(["179969831856298"]);
-const GRAPH_API_VERSION = resolveMetaGraphApiVersion();
 
 async function hmacSha256Hex(payload: string, secret: string) {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -25,8 +24,8 @@ function fieldMap(fieldData: unknown) {
   return map;
 }
 function pick(map: Record<string, string>, names: string[]) { for (const name of names) if (map[name]) return map[name]; return ""; }
-async function retrieveLead(leadgenId: string, pageAccessToken: string) {
-  const url = new URL("https://graph.facebook.com/" + GRAPH_API_VERSION + "/" + encodeURIComponent(leadgenId));
+async function retrieveLead(leadgenId: string, pageAccessToken: string, graphApiVersion: string) {
+  const url = new URL("https://graph.facebook.com/" + graphApiVersion + "/" + encodeURIComponent(leadgenId));
   url.searchParams.set("fields", "id,created_time,field_data,ad_id,form_id,campaign_id");
   url.searchParams.set("access_token", pageAccessToken);
   const response = await fetch(url.toString(), { method: "GET" });
@@ -134,6 +133,15 @@ export const webhook = httpAction(async (ctx, request) => {
     return challenge ? new Response(challenge, { status: 200 }) : new Response("Missing challenge", { status: 400 });
   }
   if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+  let graphApiVersion: string;
+  try {
+    graphApiVersion = resolveMetaGraphApiVersion();
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "migration_required") {
+      return Response.json({ error: "migration_required", message: "Upgrade META_GRAPH_API_VERSION to v26.0 or newer." }, { status: 503 });
+    }
+    return Response.json({ error: "meta_graph_version_invalid" }, { status: 503 });
+  }
   const appSecret = process.env.META_APP_SECRET;
   const pageAccessToken = process.env.META_PAGE_ACCESS_TOKEN;
   if (!appSecret) return new Response("META_APP_SECRET not configured", { status: 503 });
@@ -166,7 +174,7 @@ export const webhook = httpAction(async (ctx, request) => {
           results.push({ ...receipt, leadgen_id: leadgenId });
           continue;
         }
-        const retrievedLead = await retrieveLead(leadgenId, pageAccessToken);
+        const retrievedLead = await retrieveLead(leadgenId, pageAccessToken, graphApiVersion);
         const result = await ctx.runMutation(internal.meta.recordWebhook, {
           page_id: pageId, leadgen_id: leadgenId, form_id: formId,
           created_time: String(value.created_time ?? retrievedLead?.created_time ?? ""), raw_payload: value, retrieved_lead: retrievedLead,
