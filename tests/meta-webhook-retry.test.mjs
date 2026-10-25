@@ -19,7 +19,7 @@ test("webhook durably records the signed event and verifies the connection befor
   assert.match(source, /export const recordWebhookReceipt = internalMutation/);
   assert.match(source, /const verified = !!connection && connection\.status === "verified"/);
   const webhookSource = source.slice(source.indexOf("export const webhook"));
-  assert.ok(webhookSource.indexOf("internal\.meta\.recordWebhookReceipt") < webhookSource.indexOf("retrieveLead(leadgenId, pageAccessToken)"));
+  assert.ok(webhookSource.indexOf("internal.meta.recordWebhookReceipt") < webhookSource.indexOf("retrieveLead(leadgenId, pageAccessToken)"));
 });
 
 test("upstream Graph API errors are sanitized before webhook response", () => {
