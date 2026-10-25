@@ -3,9 +3,11 @@ import { createRoot } from 'react-dom/client'
 import { ConvexBetterAuthProvider } from '@convex-dev/better-auth/react'
 import { convex } from './lib/convex'
 import { authClient } from './lib/auth-client'
+import type { AuthClient } from '@convex-dev/better-auth/react'
+// Keep the concrete client type for auth hooks; adapt only at the provider boundary for its plugin-union typing.
 import './index.css'
 import App from './App'
-createRoot(document.getElementById('root')!).render(<StrictMode><ConvexBetterAuthProvider client={convex} authClient={authClient}><App /></ConvexBetterAuthProvider></StrictMode>)
+createRoot(document.getElementById('root')!).render(<StrictMode><ConvexBetterAuthProvider client={convex} authClient={authClient as unknown as AuthClient}><App /></ConvexBetterAuthProvider></StrictMode>)
 
 
 
