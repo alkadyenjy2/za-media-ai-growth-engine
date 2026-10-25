@@ -202,7 +202,7 @@ export const webhook = httpAction(async (ctx, request) => {
           created_time: String(value.created_time ?? retrievedLead?.created_time ?? ""), raw_payload: value, retrieved_lead: retrievedLead,
         });
         await ctx.runMutation(internal.meta.markWebhookStatus, {
-          event_key: eventKey, status: mutationResult?.ok === false ? "retryable_failed" : "processed",
+          event_key: eventKey, status: mutationResult?.ok === false ? "permanent_failed" : "processed",
           last_error: mutationResult?.ok === false ? String(mutationResult.reason ?? "WEBHOOK_PROCESSING_FAILED") : undefined,
         });
         results.push({ ...mutationResult, leadgen_id: leadgenId });
@@ -214,7 +214,7 @@ export const webhook = httpAction(async (ctx, request) => {
         const retryable = isRetryableMetaWebhookError(error);
         try {
           await ctx.runMutation(internal.meta.markWebhookStatus, {
-            event_key: eventKey, status: "retryable_failed", last_error: reason.slice(0, 500),
+            event_key: eventKey, status: retryable ? "retryable_failed" : "permanent_failed", last_error: reason.slice(0, 500),
           });
         } catch {}
         results.push({ ok: false, leadgen_id: leadgenId, reason, retryable });
