@@ -182,6 +182,7 @@ export const webhook = httpAction(async (ctx, request) => {
         hasPermanentFailure = true;
         continue;
       }
+      const eventKey = pageId + ":" + leadgenId;
       try {
         // Persist the signed event before the external Graph API call. This keeps failed retrievals replayable.
         const receipt = await ctx.runMutation(internal.meta.recordWebhookReceipt, {
