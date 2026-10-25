@@ -15,9 +15,11 @@ test("Meta lead idempotency key is scoped to both page and lead", () => {
   assert.match(source, /eq\("idempotency_key", idempotencyKey\)/);
 });
 
-test("webhook validates a verified connection before Graph API retrieval", () => {
-  assert.match(source, /ctx\.runQuery\(internal\.meta\.checkWebhookConnection/);
-  assert.ok(source.indexOf("checkWebhookConnection") < source.indexOf("retrieveLead(leadgenId, pageAccessToken)", source.indexOf("export const webhook")));
+test("webhook durably records the signed event and verifies the connection before Graph API retrieval", () => {
+  assert.match(source, /export const recordWebhookReceipt = internalMutation/);
+  assert.match(source, /const verified = !!connection && connection\.status === "verified"/);
+  const webhookSource = source.slice(source.indexOf("export const webhook"));
+  assert.ok(webhookSource.indexOf("internal\.meta\.recordWebhookReceipt") < webhookSource.indexOf("retrieveLead(leadgenId, pageAccessToken)"));
 });
 
 test("upstream Graph API errors are sanitized before webhook response", () => {
