@@ -13,9 +13,10 @@ const bundlePath = resolve(root, "node_modules/.cache/meta-webhook-under-test.cj
 mkdirSync(dirname(bundlePath), { recursive: true });
 buildSync({ entryPoints: [resolve(root, "convex/meta.ts")], bundle: true, platform: "node", format: "cjs", packages: "external", outfile: bundlePath });
 const require = createRequire(import.meta.url);
-const { webhook, recordWebhook } = require(bundlePath);
+const { webhook, recordWebhook, recordWebhookReceipt } = require(bundlePath);
 assert.equal(typeof webhook?._handler, "function", "must invoke the actual exported Convex HTTP action handler");
 assert.equal(typeof recordWebhook?._handler, "function", "must invoke the actual exported Convex mutation handler");
+assert.equal(typeof recordWebhookReceipt?._handler, "function", "must persist the signed receipt before external retrieval");
 
 const oldEnv = { META_APP_SECRET: process.env.META_APP_SECRET, META_PAGE_ACCESS_TOKEN: process.env.META_PAGE_ACCESS_TOKEN };
 const oldFetch = globalThis.fetch;
@@ -42,8 +43,9 @@ try {
   assert.equal(mutationCalls, 0, "invalid signatures must not write records");
   assert.equal(graphCalls, 0, "invalid signatures must not trigger Graph requests");
 
-  globalThis.fetch = async () => { throw new TypeError("fetch failed"); };
-  let response = await webhook._handler(ctx(async () => { throw new Error("mutation must not run after fetch failure"); }), request());
+  let receiptWrites = 0;
+  globalThis.fetch = async () => { assert.equal(receiptWrites, 1, "signed receipt must be persisted before Graph retrieval"); throw new TypeError("fetch failed"); };
+  let response = await webhook._handler(ctx(async () => { receiptWrites += 1; return { ok: true, duplicate: false, status: "processing" }; }), request());
   assert.equal(response.status, 503, "network failures must return HTTP 503 for provider retry");
   let result = await response.json();
   assert.equal(result.results[0].retryable, true);
@@ -51,22 +53,24 @@ try {
 
   let blockedFetchCalls = 0;
   globalThis.fetch = async () => { blockedFetchCalls += 1; return fetchLead(); };
-  response = await webhook._handler(ctx(async () => { throw new Error("mutation must not run for an unverified connection"); }, async () => ({ ok: false, reason: "NO_VERIFIED_META_CONNECTION" })), request());
+  response = await webhook._handler(ctx(async () => ({ ok: false, reason: "NO_VERIFIED_META_CONNECTION" })), request());
   assert.equal(response.status, 422, "unverified Meta connections must be rejected before Graph retrieval");
   assert.equal(blockedFetchCalls, 0, "unverified connections must not trigger outbound Graph requests");
 
   globalThis.fetch = fetchLead;
-  response = await webhook._handler(ctx(async () => { throw new Error("database temporarily unavailable"); }), request());
+  let mutationSequence = 0;
+  response = await webhook._handler(ctx(async () => { mutationSequence += 1; if (mutationSequence === 1) return { ok: true, duplicate: false, status: "processing" }; if (mutationSequence === 2) throw new Error("database temporarily unavailable"); return { ok: true }; }), request());
   assert.equal(response.status, 503, "unclassified mutation/storage failures must return HTTP 503");
 
   globalThis.fetch = async () => new Response("bad request", { status: 400 });
-  response = await webhook._handler(ctx(async () => { throw new Error("mutation must not run for Meta HTTP 400"); }), request());
+  response = await webhook._handler(ctx(async () => ({ ok: true, duplicate: false, status: "processing" })), request());
   assert.equal(response.status, 422, "known permanent Meta client errors must not be treated as transient");
   result = await response.json();
   assert.equal(result.results[0].reason, "META_LEAD_RETRIEVAL_FAILED:400:upstream_error", "permanent Meta errors must be classified without leaking upstream details");
 
   globalThis.fetch = fetchLead;
-  response = await webhook._handler(ctx(async () => ({ ok: true, duplicate: false, promoted: true, lead_id: "local-lead-1" })), request());
+  let successfulMutationSequence = 0;
+  response = await webhook._handler(ctx(async () => { successfulMutationSequence += 1; return successfulMutationSequence === 1 ? { ok: true, duplicate: false, status: "processing" } : { ok: true, duplicate: false, promoted: true, lead_id: "local-lead-1" }; }), request());
   assert.equal(response.status, 200, "fully processed events must return HTTP 200");
   result = await response.json();
   assert.equal(result.results[0].leadgen_id, "local-lead-123");
@@ -88,7 +92,7 @@ try {
   assert.equal(inserts, 0, "the production mutation must not insert records for a known duplicate");
 
   console.log("PASS: invalid signature returns 401 without DB or Graph calls");
-  console.log("PASS: production webhook handler network failure => 503");
+  console.log("PASS: signed receipt is persisted before Graph retrieval; network failure => 503");
   console.log("PASS: exception detail is sanitized");
   console.log("PASS: production webhook handler mutation failure => 503");
   console.log("PASS: unverified Meta connection is rejected before outbound Graph retrieval");
