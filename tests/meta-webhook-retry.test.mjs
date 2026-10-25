@@ -32,7 +32,7 @@ test("durable webhook event ledger is indexed by stable page and lead ID and tra
   const schema = await readFile(new URL("../convex/schema.ts", import.meta.url), "utf8");
   assert.match(schema, /meta_webhook_events: defineTable/);
   assert.match(schema, /by_event_key/);
-  assert.match(schema, /status: v\.union\(v\.literal\("received"\), v\.literal\("processing"\), v\.literal\("processed"\), v\.literal\("retryable_failed"\)\)/);
+  assert.match(schema, /status: v\.union\(v\.literal\("received"\), v\.literal\("processing"\), v\.literal\("processed"\), v\.literal\("retryable_failed"\), v\.literal\("permanent_failed"\)\)/);
   assert.match(source, /args\.page_id \+ ":" \+ args\.leadgen_id/);
   assert.match(source, /recordWebhookReceipt/);
 });
