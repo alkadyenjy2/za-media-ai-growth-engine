@@ -74,7 +74,7 @@ export const recordWebhookReceipt = internalMutation({
 });
 
 export const markWebhookStatus = internalMutation({
-  args: { event_key: v.string(), status: v.union(v.literal("processed"), v.literal("retryable_failed")), last_error: v.optional(v.string()) },
+  args: { event_key: v.string(), status: v.union(v.literal("processed"), v.literal("retryable_failed"), v.literal("permanent_failed")), last_error: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const event = await ctx.db.query("meta_webhook_events").withIndex("by_event_key", (q: any) => q.eq("event_key", args.event_key)).unique();
     if (!event) return { ok: false, reason: "EVENT_NOT_FOUND" };
